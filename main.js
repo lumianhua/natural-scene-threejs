@@ -1,5 +1,7 @@
 import * as THREE from 'https://esm.sh/three@0.154.0';
 import { PointerLockControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/PointerLockControls.js';
+import { RGBELoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/RGBELoader.js';
+
 
 
 // Create the scene
@@ -20,9 +22,28 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
+
+
+// hdr sky
+
+const rgbeLoader = new RGBELoader();
+
+rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (texture) => {
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  scene.background = texture;
+});
+
+
+
+
+
+
+
 // Add PointerLockControls to control the camera
 const controls = new PointerLockControls(camera, document.body);
 scene.add(controls.getObject());
+
+
 
 // Click anywhere to enable controls
 document.addEventListener('click', () => {
@@ -53,6 +74,11 @@ document.addEventListener('click', () => {
   });
   
 
+
+
+
+  
+  
 
 // Create a more detailed ground (with many vertices)
 const groundGeometry = new THREE.PlaneGeometry(100, 100, 100, 100);
