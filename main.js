@@ -4,6 +4,7 @@ import { RGBELoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/RG
 
 
 
+
 // Create the scene
 const scene = new THREE.Scene();
 // scene.background = new THREE.Color(0xf5d7a3); // warm desert sky
