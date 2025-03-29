@@ -54,7 +54,7 @@ document.addEventListener('click', () => {
 
   const velocity = new THREE.Vector3();
   const direction = new THREE.Vector3();
-  const move = { forward: false, backward: false, left: false, right: false };
+  const move = { forward: false, backward: false, left: false, right: false, up: false, down: false };
   
   document.addEventListener('keydown', (event) => {
     switch (event.code) {
@@ -62,6 +62,8 @@ document.addEventListener('click', () => {
       case 'KeyS': move.backward = true; break;
       case 'KeyA': move.left = true; break;
       case 'KeyD': move.right = true; break;
+      case 'KeyQ': move.up = true; break;
+      case 'KeyE': move.down = true; break;
     }
   });
   
@@ -71,6 +73,8 @@ document.addEventListener('click', () => {
       case 'KeyS': move.backward = false; break;
       case 'KeyA': move.left = false; break;
       case 'KeyD': move.right = false; break;
+      case 'KeyQ': move.up = false; break;
+      case 'KeyE': move.down = false; break;
     }
   });
   
@@ -82,7 +86,7 @@ document.addEventListener('click', () => {
   
 
 // Create a more detailed ground (with many vertices)
-const groundGeometry = new THREE.PlaneGeometry(100, 100, 100, 100);
+const groundGeometry = new THREE.PlaneGeometry(1000, 1000, 200, 200);
 
 // Modify vertex heights to create hills
 const positionAttr = groundGeometry.attributes.position;
@@ -102,10 +106,47 @@ const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.rotation.x = -Math.PI / 2; // Rotate to lay flat
 scene.add(ground);
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Add a directional light
 const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(5, 10, 7.5);
 scene.add(light);
+
+
+
+
+
+
 
 
 
@@ -120,9 +161,17 @@ function animate() {
   
     velocity.x = direction.x * speed;
     velocity.z = direction.z * speed;
+
+
+    velocity.y = 0;
+    if (move.up) velocity.y += speed;
+    if (move.down) velocity.y -= speed;
   
+    // Apply movement
     controls.moveRight(velocity.x);
     controls.moveForward(velocity.z);
+    controls.getObject().position.y += velocity.y;
+    
   
     renderer.render(scene, camera);
   }
