@@ -1,22 +1,24 @@
 import * as THREE from 'https://esm.sh/three@0.154.0';
-import { PointerLockControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/PointerLockControls.js';
+import { OrbitControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/OrbitControls.js';
 import { RGBELoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/RGBELoader.js';
-
+import { ImprovedNoise } from 'https://esm.sh/three@0.154.0/examples/jsm/math/ImprovedNoise.js';
+import { PMREMGenerator } from 'https://esm.sh/three@0.154.0';
+import { PointerLockControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/PointerLockControls.js';
 
 
 
 // Create the scene
 const scene = new THREE.Scene();
-// scene.background = new THREE.Color(0xf5d7a3); // warm desert sky
+
 
 // Create the camera
 const camera = new THREE.PerspectiveCamera(
   75, 
   window.innerWidth / window.innerHeight, 
   0.1, 
-  1000
+  10000
 );
-camera.position.set(0, 5, 10);
+camera.position.set(0, 0, 0);
 
 // Create the renderer
 const renderer = new THREE.WebGLRenderer();
@@ -27,84 +29,167 @@ document.body.appendChild(renderer.domElement);
 
 // hdr sky
 
-const rgbeLoader = new RGBELoader();
 
-rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (texture) => {
-  texture.mapping = THREE.EquirectangularReflectionMapping;
-  scene.background = texture;
+let sky;
+
+
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileEquirectangularShader();
+
+const rgbeLoader = new RGBELoader();
+rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) => {
+  const envMap = pmremGenerator.fromEquirectangular(hdrEquirect).texture;
+
+  scene.environment = envMap;         // Let HDR take care of the real lighting
+ 
+ 
+  const skyGeo = new THREE.SphereGeometry(5000, 60, 40);
+  const skyMat = new THREE.MeshBasicMaterial({
+    map: hdrEquirect,
+    side: THREE.BackSide
+  });
+  sky = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(sky);
+  hdrEquirect.dispose();
+
 });
 
 
 
 
+//Controls
 
 
-
-// Add PointerLockControls to control the camera
 const controls = new PointerLockControls(camera, document.body);
 scene.add(controls.getObject());
+controls.getObject().position.set(0, 25, -350);
+camera.lookAt(new THREE.Vector3(0, 0, 0));
 
 
-
-// Click anywhere to enable controls
 document.addEventListener('click', () => {
-    controls.lock();
-  });
+  controls.lock(); // Go to first person view
+});
+
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
+const move = {
+  forward: false,
+  backward: false,
+  left: false,
+  right: false,
+  up: false,
+  down: false
+};
+
+// Listen for key presses
+document.addEventListener('keydown', (event) => {
+  switch (event.code) {
+    case 'KeyW': move.forward = true; break;
+    case 'KeyS': move.backward = true; break;
+    case 'KeyA': move.left = true; break;
+    case 'KeyD': move.right = true; break;
+    case 'KeyQ': move.up = true; break;
+    case 'KeyE': move.down = true; break;
+  }
+});
+
+// Listen for release keys
+document.addEventListener('keyup', (event) => {
+  switch (event.code) {
+    case 'KeyW': move.forward = false; break;
+    case 'KeyS': move.backward = false; break;
+    case 'KeyA': move.left = false; break;
+    case 'KeyD': move.right = false; break;
+    case 'KeyQ': move.up = false; break;
+    case 'KeyE': move.down = false; break;
+  }
+});
+
+
+
+
   
 
-  const velocity = new THREE.Vector3();
-  const direction = new THREE.Vector3();
-  const move = { forward: false, backward: false, left: false, right: false, up: false, down: false };
+
+
+
+
+
+
+
+
+// terrain
+
+
+
+const worldWidth = 400;
+const worldDepth = 400;
+
+
+
+
+
+function generateHeight(width, height) {
+  const size = width * height;
+  const data = new Uint8Array(size);
+  const perlin = new ImprovedNoise();
+  const z = 67; // Refreshing the terrain
+
+  const centers = [
+    // Mountains in the distance
+    { x: 350, y: 300, radius: 80, strength: 0.5},
+    { x: 290, y: 300, radius: 80, strength: 0.5},
+    { x: 230, y: 260, radius: 80, strength: 0.4},
+    { x: 90, y: 300, radius: 80, strength: 0.3},
+    { x: 30, y: 300, radius: 70, strength: 0.4},
+    { x: 60, y: 220, radius: 50, strength: 0.3},
+
+    // Nearby mountains
+    { x: 350, y: 60, radius: 80, strength: 0.2},
+    { x: 290, y: 60, radius: 80, strength: 0.2},
+    { x: 230, y: 60, radius: 80, strength: 0.2},
+    { x: 150, y: 60, radius: 80, strength: 0.2},
+    { x: 50, y: 60, radius: 70, strength: 0.2},
+    { x: 100, y: 60, radius: 60, strength: 0.2}
+  ];
   
-  document.addEventListener('keydown', (event) => {
-    switch (event.code) {
-      case 'KeyW': move.forward = true; break;
-      case 'KeyS': move.backward = true; break;
-      case 'KeyA': move.left = true; break;
-      case 'KeyD': move.right = true; break;
-      case 'KeyQ': move.up = true; break;
-      case 'KeyE': move.down = true; break;
+
+
+
+  let quality = 1;
+  for (let j = 0; j < 4; j++) {
+    for (let i = 0; i < size; i++) {
+      const x = i % width;
+      const y = ~~(i / width);
+
+      let totalFalloff = 0;
+
+      for (const center of centers) {
+        const dx = x - center.x;
+        const dy = y - center.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+
+        let falloff;
+        if (center.radius > 70) {
+          falloff = Math.pow(Math.max(0, 1 - dist / center.radius), 1.2);
+        } else {
+          falloff = Math.pow(Math.max(0, 1 - dist / center.radius), 2.5);
+        }
+        totalFalloff += falloff * center.strength;
+
+
+      }
+
+      const noise = Math.abs(perlin.noise(x / quality, y / quality, z) * quality * 1.75);
+      data[i] += noise * totalFalloff;
     }
-  });
-  
-  document.addEventListener('keyup', (event) => {
-    switch (event.code) {
-      case 'KeyW': move.forward = false; break;
-      case 'KeyS': move.backward = false; break;
-      case 'KeyA': move.left = false; break;
-      case 'KeyD': move.right = false; break;
-      case 'KeyQ': move.up = false; break;
-      case 'KeyE': move.down = false; break;
-    }
-  });
-  
 
+    quality *= 5;
+  }
 
-
-
-  
-  
-
-// Create a more detailed ground (with many vertices)
-const groundGeometry = new THREE.PlaneGeometry(1000, 1000, 200, 200);
-
-// Modify vertex heights to create hills
-const positionAttr = groundGeometry.attributes.position;
-for (let i = 0; i < positionAttr.count; i++) {
-  const x = positionAttr.getX(i);
-  const y = positionAttr.getY(i);
-  const z = positionAttr.getZ(i);
-
-  const height = Math.random() * 0.3; // Tune this value for smoother hills
-  positionAttr.setZ(i, height);     // Update the Z (height) of each vertex
+  return data;
 }
-positionAttr.needsUpdate = true;
-groundGeometry.computeVertexNormals(); // Important for correct lighting
-
-const groundMaterial = new THREE.MeshStandardMaterial({ color: 0xc2b280 }); // sand yellow
-const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-ground.rotation.x = -Math.PI / 2; // Rotate to lay flat
-scene.add(ground);
 
 
 
@@ -114,16 +199,29 @@ scene.add(ground);
 
 
 
+const data = generateHeight(worldWidth, worldDepth);
 
 
+const geometry = new THREE.PlaneGeometry(1000, 1000, worldWidth - 1, worldDepth - 1);
+geometry.rotateX(-Math.PI / 2);
 
 
+const vertices = geometry.attributes.position.array;
+for (let i = 0, j = 0; i < data.length; i++, j += 3) {
+  vertices[j + 1] = data[i] * 2.5; 
+}
+geometry.computeVertexNormals();
 
+const material = new THREE.MeshStandardMaterial({
+  color: 0xab864b,
+  flatShading: false,
+  roughness: 1,
+  metalness: 0,
+  envMapIntensity: 1.2
+});
 
-
-
-
-
+const terrain = new THREE.Mesh(geometry, material);
+scene.add(terrain);
 
 
 
@@ -153,26 +251,25 @@ scene.add(light);
 // Animation
 function animate() {
     requestAnimationFrame(animate);
-  
-    const speed = 0.1;
+    const speed = 1.5;
+
     direction.z = Number(move.forward) - Number(move.backward);
     direction.x = Number(move.right) - Number(move.left);
+    direction.y = Number(move.up) - Number(move.down);
     direction.normalize();
-  
+    
     velocity.x = direction.x * speed;
     velocity.z = direction.z * speed;
-
-
-    velocity.y = 0;
-    if (move.up) velocity.y += speed;
-    if (move.down) velocity.y -= speed;
-  
-    // Apply movement
+    velocity.y = direction.y * speed;
+    
     controls.moveRight(velocity.x);
     controls.moveForward(velocity.z);
     controls.getObject().position.y += velocity.y;
-    
+    if (sky) sky.position.copy(camera.position);
+
+
   
+
     renderer.render(scene, camera);
   }
   
