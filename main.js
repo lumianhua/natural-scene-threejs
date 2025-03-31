@@ -193,6 +193,37 @@ function generateHeight(width, height) {
 
 
 
+// texture
+function generateLargeTexture(callback) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2048;
+  canvas.height = 2048;
+
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.src = 'assets/textures/sandy_gravel_02_diff_4k.jpg'; 
+
+  img.onload = () => {
+    const tileSize = 512;
+    const repeatX = Math.ceil(canvas.width / tileSize);
+    const repeatY = Math.ceil(canvas.height / tileSize);
+
+    for (let y = 0; y < repeatY; y++) {
+      for (let x = 0; x < repeatX; x++) {
+        ctx.drawImage(img, x * tileSize, y * tileSize, tileSize, tileSize);
+      }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.colorSpace = THREE.SRGBColorSpace;
+
+    callback(texture);
+  };
+}
+
+
+
 
 
 
@@ -212,22 +243,24 @@ for (let i = 0, j = 0; i < data.length; i++, j += 3) {
 }
 geometry.computeVertexNormals();
 
-const material = new THREE.MeshStandardMaterial({
-  color: 0xab864b,
-  flatShading: false,
-  roughness: 1,
-  metalness: 0,
-  envMapIntensity: 1.2
+
+generateLargeTexture((texture) => {
+  const material = new THREE.MeshStandardMaterial({
+    map: texture,
+    roughness: 1,
+    metalness: 0,
+    envMapIntensity: 1.2
+  });
+
+  // UV coordinate scaling, repeat mapping, avoid blurring
+  geometry.attributes.uv.array.forEach((v, i, arr) => {
+    arr[i] *= 10; 
+  });
+  geometry.attributes.uv.needsUpdate = true;
+
+  const terrain = new THREE.Mesh(geometry, material);
+  scene.add(terrain);
 });
-
-const terrain = new THREE.Mesh(geometry, material);
-scene.add(terrain);
-
-
-
-
-
-
 
 
 
@@ -239,6 +272,8 @@ scene.add(terrain);
 const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(5, 10, 7.5);
 scene.add(light);
+
+
 
 
 
