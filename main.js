@@ -96,10 +96,9 @@ pmremGenerator.compileEquirectangularShader();
 const rgbeLoader = new RGBELoader();
 rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) => {
   const envMap = pmremGenerator.fromEquirectangular(hdrEquirect).texture;
+  scene.environment = envMap;
 
-  scene.environment = envMap;         // Let HDR take care of the real lighting
- 
- 
+  // Creating Sky Balls
   const skyGeo = new THREE.SphereGeometry(5000, 60, 40);
   const skyMat = new THREE.MeshBasicMaterial({
     map: hdrEquirect,
@@ -107,8 +106,54 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
   });
   sky = new THREE.Mesh(skyGeo, skyMat);
   scene.add(sky);
-  hdrEquirect.dispose();
 
+  // Automatic extraction of the sun's direction
+  const data = hdrEquirect.image.data;
+  const width = hdrEquirect.image.width;
+  const height = hdrEquirect.image.height;
+
+  let maxLuminance = 0;
+  let maxIndex = 0;
+
+  for (let i = 0; i < width * height; i++) {
+    const r = data[i * 4];
+    const g = data[i * 4 + 1];
+    const b = data[i * 4 + 2];
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if (luminance > maxLuminance) {
+      maxLuminance = luminance;
+      maxIndex = i;
+    }
+  }
+
+  const x = maxIndex % width;
+  const y = Math.floor(maxIndex / width);
+  const u = x / width;
+  const v = y / height;
+
+  const phi = u * 2 * Math.PI;
+  const theta = v * Math.PI;
+
+  const sunDirection = new THREE.Vector3(
+    Math.sin(theta) * Math.sin(phi),
+    Math.cos(theta),
+    Math.sin(theta) * Math.cos(phi)
+  ).normalize();
+
+  // Create and add direct light (to simulate sunlight)
+  const light = new THREE.DirectionalLight(0xffffff, 1.2);
+  light.position.copy(sunDirection.clone().multiplyScalar(100));
+  scene.add(light);
+
+  // Add debugging of the sun's position to the blob
+  const sunHelper = new THREE.Mesh(
+    new THREE.SphereGeometry(5, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffff00 })
+  );
+  sunHelper.position.copy(sunDirection.clone().multiplyScalar(5000));
+  scene.add(sunHelper);
+
+  hdrEquirect.dispose();
 });
 
 
@@ -254,41 +299,69 @@ function generateHeight(width, height) {
 
 
 
-function generateWangTexture(callback, mapWidth = 8, mapHeight = 8, tileSize = 128) {
-  const canvas = document.createElement('canvas');
-  canvas.width = mapWidth * tileSize;
-  canvas.height = mapHeight * tileSize;
-  const ctx = canvas.getContext('2d');
+function generateWangTextures(callback, mapWidth = 8, mapHeight = 8, tileSize = 128) {
+  const canvasList = {
+    map: document.createElement('canvas'),
+    aoMap: document.createElement('canvas'),
+    roughnessMap: document.createElement('canvas'),
+    displacementMap: document.createElement('canvas'),
+    normalMap: document.createElement('canvas')
+  };
 
-  const tileMap = wang(mapWidth, mapHeight); 
+  const ctxList = {};
+  for (const key in canvasList) {
+    canvasList[key].width = mapWidth * tileSize;
+    canvasList[key].height = mapHeight * tileSize;
+    ctxList[key] = canvasList[key].getContext('2d');
+  }
 
+  const tileMap = wang(mapWidth, mapHeight);
+  const textureTypes = ['diff', 'ao', 'rough', 'disp', 'normal'];
+  const textureKeys = ['map', 'aoMap', 'roughnessMap', 'displacementMap', 'normalMap'];
+
+  const tiles = {};
+  const totalToLoad = 16 * textureTypes.length;
   let loaded = 0;
-  const tiles = [];
 
   for (let i = 0; i < 16; i++) {
-    tiles[i] = new Image();
-    tiles[i].src = `assets/wang_tiles/wang_${i}.png`;
-    tiles[i].onload = () => {
-      loaded++;
-      if (loaded === 16) drawAll();
-    };
+    for (let t = 0; t < textureTypes.length; t++) {
+      const texType = textureTypes[t];
+      const key = textureKeys[t];
+
+      const img = new Image();
+      img.src = `assets/wang_tiles/wang_${i}_${texType}.png`;
+      if (!tiles[key]) tiles[key] = [];
+      tiles[key][i] = img;
+
+      img.onload = () => {
+        loaded++;
+        if (loaded === totalToLoad) drawAll();
+      };
+    }
   }
 
   function drawAll() {
     for (let y = 0; y < mapHeight; y++) {
       for (let x = 0; x < mapWidth; x++) {
         const index = tileMap[y * mapWidth + x];
-        ctx.drawImage(tiles[index], x * tileSize, y * tileSize, tileSize, tileSize);
+        textureKeys.forEach((key) => {
+          ctxList[key].drawImage(tiles[key][index], x * tileSize, y * tileSize, tileSize, tileSize);
+        });
       }
     }
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.colorSpace = THREE.SRGBColorSpace;
+    const textures = {};
+    for (const key in canvasList) {
+      const tex = new THREE.CanvasTexture(canvasList[key]);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      textures[key] = tex;
+    }
 
-    callback(texture);
+    callback(textures);
   }
 }
+
 
 
 
@@ -309,16 +382,24 @@ for (let i = 0, j = 0; i < data.length; i++, j += 3) {
   vertices[j + 1] = data[i] * 2.5; 
 }
 geometry.computeVertexNormals();
+geometry.setAttribute('uv2', new THREE.BufferAttribute(geometry.attributes.uv.array, 2));
 
 
 
-generateWangTexture((texture) => {
+generateWangTextures((textures) => {
   const material = new THREE.MeshStandardMaterial({
-    map: texture,
+    map: textures.map,
+    aoMap: textures.aoMap,
+    roughnessMap: textures.roughnessMap,
+    displacementMap: textures.displacementMap,
+    normalMap: textures.normalMap, 
+  
     roughness: 1,
     metalness: 0,
-    envMapIntensity: 1.2
+    displacementScale: 2.5,
+    envMapIntensity: 0.3
   });
+  
 
   geometry.attributes.uv.array.forEach((v, i, arr) => {
     arr[i] *= 10;
@@ -335,11 +416,6 @@ generateWangTexture((texture) => {
 
 
 
-
-// Add a directional light
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(5, 10, 7.5);
-scene.add(light);
 
 
 
