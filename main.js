@@ -6,6 +6,63 @@ import { PMREMGenerator } from 'https://esm.sh/three@0.154.0';
 import { PointerLockControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/PointerLockControls.js';
 
 
+// preliminary
+
+//wang tiles
+function wang(f, i, o = 0) {
+  const n = [2,9,11,8,11,8,9,9,1,6,7,2,10,8,10,9];
+  const r = [-1,0,0,0,0,0,0,0,13,15,12,15,-1,-1,-1,-1];
+  const t = [-1,3,3,1,3,7,3,5,-1,-1,-1,-1,4,1,2,5];
+  const a = [-1,12,14,13,12,12,14,13,-1,-1,-1,-1,-1,-1,-1,-1];
+
+  let b = new Uint8Array(f * i);
+  let h = new Uint8Array(f * i);
+  h[0] = Math.abs(Math.floor(o)) % 16;
+
+  let A = 1, c = 1;
+  while (A < f || c < i) {
+    [h, b] = [b, h];
+    let u2 = 0, v = 0;
+
+    for (let M = 0; M < c; M++) {
+      let w = v === i - 1;
+      for (let U = 0; U < A;) {
+        let e = u2 + f * v;
+        let s = u2 === f - 1;
+        let l = b[U + f * M];
+
+        h[e] = n[l];
+
+        if (t[l] !== -1 && !s) {
+          h[e + 1] = t[l];
+        }
+
+        if (r[l] !== -1 && !w) {
+          h[e + f] = r[l];
+        }
+
+        if (a[l] !== -1 && !w && !s) {
+          h[e + f + 1] = a[l];
+        }
+
+        U++;
+        u2 += (t[l] !== -1 && !s) ? 2 : 1;
+      }
+
+      v += (w || r[b[(A - 1) + f * M]] === -1) ? 1 : 2;
+    }
+
+    A = u2;
+    c = v;
+  }
+
+  return h;
+}
+
+
+
+
+
 
 // Create the scene
 const scene = new THREE.Scene();
@@ -128,7 +185,7 @@ const worldDepth = 400;
 
 
 
-
+// mountain
 function generateHeight(width, height) {
   const size = width * height;
   const data = new Uint8Array(size);
@@ -194,23 +251,34 @@ function generateHeight(width, height) {
 
 
 // texture
-function generateLargeTexture(callback) {
+
+
+
+function generateWangTexture(callback, mapWidth = 8, mapHeight = 8, tileSize = 128) {
   const canvas = document.createElement('canvas');
-  canvas.width = 2048;
-  canvas.height = 2048;
-
+  canvas.width = mapWidth * tileSize;
+  canvas.height = mapHeight * tileSize;
   const ctx = canvas.getContext('2d');
-  const img = new Image();
-  img.src = 'assets/textures/sandy_gravel_02_diff_4k.jpg'; 
 
-  img.onload = () => {
-    const tileSize = 512;
-    const repeatX = Math.ceil(canvas.width / tileSize);
-    const repeatY = Math.ceil(canvas.height / tileSize);
+  const tileMap = wang(mapWidth, mapHeight); 
 
-    for (let y = 0; y < repeatY; y++) {
-      for (let x = 0; x < repeatX; x++) {
-        ctx.drawImage(img, x * tileSize, y * tileSize, tileSize, tileSize);
+  let loaded = 0;
+  const tiles = [];
+
+  for (let i = 0; i < 16; i++) {
+    tiles[i] = new Image();
+    tiles[i].src = `assets/wang_tiles/wang_${i}.png`;
+    tiles[i].onload = () => {
+      loaded++;
+      if (loaded === 16) drawAll();
+    };
+  }
+
+  function drawAll() {
+    for (let y = 0; y < mapHeight; y++) {
+      for (let x = 0; x < mapWidth; x++) {
+        const index = tileMap[y * mapWidth + x];
+        ctx.drawImage(tiles[index], x * tileSize, y * tileSize, tileSize, tileSize);
       }
     }
 
@@ -219,9 +287,8 @@ function generateLargeTexture(callback) {
     texture.colorSpace = THREE.SRGBColorSpace;
 
     callback(texture);
-  };
+  }
 }
-
 
 
 
@@ -244,7 +311,8 @@ for (let i = 0, j = 0; i < data.length; i++, j += 3) {
 geometry.computeVertexNormals();
 
 
-generateLargeTexture((texture) => {
+
+generateWangTexture((texture) => {
   const material = new THREE.MeshStandardMaterial({
     map: texture,
     roughness: 1,
@@ -252,15 +320,15 @@ generateLargeTexture((texture) => {
     envMapIntensity: 1.2
   });
 
-  // UV coordinate scaling, repeat mapping, avoid blurring
   geometry.attributes.uv.array.forEach((v, i, arr) => {
-    arr[i] *= 10; 
+    arr[i] *= 10;
   });
   geometry.attributes.uv.needsUpdate = true;
 
   const terrain = new THREE.Mesh(geometry, material);
   scene.add(terrain);
 });
+
 
 
 
