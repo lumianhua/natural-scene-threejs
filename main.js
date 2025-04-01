@@ -85,9 +85,10 @@ void main() {
     62.83 
   );
 
-  gl_FragColor = vec4( position + velocity * delta * 15. , phase );
+  gl_FragColor = vec4( position + velocity * delta * 5. , phase );
 }
 `;
+
 
 
 const fragmentShaderVelocity = `
@@ -115,7 +116,7 @@ float alignmentThresh = 0.65;
 const float UPPER_BOUNDS = BOUNDS;
 const float LOWER_BOUNDS = -UPPER_BOUNDS;
 
-const float SPEED_LIMIT = 9.0;
+const float SPEED_LIMIT = 3.0; 
 
 float rand( vec2 co ) {
   return fract( sin( dot( co.xy, vec2(12.9898,78.233) ) ) * 43758.5453 );
@@ -208,8 +209,8 @@ void main() {
 
 
 
-const WIDTH = 8;
-const BOUNDS = 800;
+const WIDTH = 6; // Antelope population
+const BOUNDS = 500; 
 const BOUNDS_HALF = BOUNDS / 2;
 
 function fillPositionTexture(texture) {
@@ -247,6 +248,7 @@ function fillVelocityTexture(texture) {
 const scene = new THREE.Scene();
 
 
+// boid
 let gpuCompute;
 let velocityVariable, positionVariable;
 let positionUniforms, velocityUniforms;
@@ -277,7 +279,7 @@ function initComputeRenderer(renderer) {
   velocityUniforms.separationDistance = { value: 20.0 };
   velocityUniforms.alignmentDistance = { value: 40.0 };
   velocityUniforms.cohesionDistance = { value: 40.0 };
-  velocityUniforms.freedomFactor = { value: 0.75 };
+  velocityUniforms.freedomFactor = { value: 1.00 };
   velocityUniforms.predator = { value: new THREE.Vector3() };
 
   velocityVariable.material.defines.BOUNDS = BOUNDS.toFixed(2);
@@ -286,7 +288,7 @@ function initComputeRenderer(renderer) {
   if (error) console.error(error);
 }
 
-const antelopeGeometry = new THREE.BoxGeometry(2, 1, 5); // 比例像个动物身体
+const antelopeGeometry = new THREE.BoxGeometry(2, 1, 5); 
 
 
 const antelopeMaterial = new THREE.MeshStandardMaterial({ color: 0x886633 });
@@ -296,6 +298,7 @@ antelopeMesh.receiveShadow = true;
 scene.add(antelopeMesh);
 
 const dummy = new THREE.Object3D();
+const previousPositions = new Float32Array(WIDTH * WIDTH * 3);
 
 
 
@@ -615,22 +618,46 @@ function generateWangTextures(callback, mapWidth = 8, mapHeight = 8, tileSize = 
 
 
 
+// World-wide dimensions of terrain
+const terrainSize = 1000;
 
 
-
-
+// Height scaling of terrain
+const terrainHeightScale = 2.5;
 
 
 const data = generateHeight(worldWidth, worldDepth);
 
 
-const geometry = new THREE.PlaneGeometry(1000, 1000, worldWidth - 1, worldDepth - 1);
+
+// Coordinate mapping and sampling
+function getTerrainHeightAt(x, z) {
+  
+  const gridX = ((x + terrainSize / 2) / terrainSize) * (worldWidth - 1);
+  const gridZ = ((z + terrainSize / 2) / terrainSize) * (worldDepth - 1);
+
+  const i = Math.floor(gridZ) * worldWidth + Math.floor(gridX);
+
+  // Boundary detection
+  if (i < 0 || i >= data.length) return 0;
+
+  return data[i] * terrainHeightScale; 
+}
+
+
+
+
+
+
+
+
+const geometry = new THREE.PlaneGeometry(terrainSize, terrainSize, worldWidth - 1, worldDepth - 1);
 geometry.rotateX(-Math.PI / 2);
 
 
 const vertices = geometry.attributes.position.array;
 for (let i = 0, j = 0; i < data.length; i++, j += 3) {
-  vertices[j + 1] = data[i] * 2.5; 
+  vertices[j + 1] = data[i] * terrainHeightScale; 
 }
 geometry.computeVertexNormals();
 geometry.setAttribute('uv2', new THREE.BufferAttribute(geometry.attributes.uv.array, 2));
@@ -731,12 +758,26 @@ function animate() {
       const y = readPixels[i * 4 + 1];
       const z = readPixels[i * 4 + 2];
 
-      dummy.position.set(x, 5, z);
+      const terrainY = getTerrainHeightAt(x, z); 
+      dummy.position.set(x, terrainY + 2, z);     // Add a little height
 
+      // Calculate the direction of velocity (position difference from the previous frame)
+      const vx = x - previousPositions[i * 3 + 0];
+      const vz = z - previousPositions[i * 3 + 2];
+      const angle = Math.atan2(vx, vz); // Steering angle
+
+      dummy.rotation.set(0, angle, 0); // Rotate around y-axis only
 
 
       dummy.updateMatrix();
       antelopeMesh.setMatrixAt(i, dummy.matrix);
+
+      // Update the position of the previous frame
+      previousPositions[i * 3 + 0] = x;
+      previousPositions[i * 3 + 1] = y;
+      previousPositions[i * 3 + 2] = z;
+
+      
     }
     antelopeMesh.instanceMatrix.needsUpdate = true;
 
