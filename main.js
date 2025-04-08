@@ -5,6 +5,7 @@ import { ImprovedNoise } from 'https://esm.sh/three@0.154.0/examples/jsm/math/Im
 import { PMREMGenerator } from 'https://esm.sh/three@0.154.0';
 import { PointerLockControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/PointerLockControls.js';
 import { GPUComputationRenderer } from 'https://esm.sh/three@0.154.0/examples/jsm/misc/GPUComputationRenderer.js';
+import { GLTFLoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/GLTFLoader.js';
 
 
 
@@ -288,17 +289,47 @@ function initComputeRenderer(renderer) {
   if (error) console.error(error);
 }
 
-const antelopeGeometry = new THREE.BoxGeometry(2, 1, 5); 
+// const antelopeGeometry = new THREE.BoxGeometry(2, 1, 5); 
 
 
-const antelopeMaterial = new THREE.MeshStandardMaterial({ color: 0x886633 });
-const antelopeMesh = new THREE.InstancedMesh(antelopeGeometry, antelopeMaterial, WIDTH * WIDTH);
-antelopeMesh.castShadow = true;
-antelopeMesh.receiveShadow = true;
-scene.add(antelopeMesh);
+// const antelopeMaterial = new THREE.MeshStandardMaterial({ color: 0x886633 });
+// const antelopeMesh = new THREE.InstancedMesh(antelopeGeometry, antelopeMaterial, WIDTH * WIDTH); antelopeMesh.castShadow = true;
+// antelopeMesh.receiveShadow = true;
+// scene.add(antelopeMesh);
 
+// const dummy = new THREE.Object3D();
+// const previousPositions = new Float32Array(WIDTH * WIDTH * 3);
+
+
+//加载羚羊
+const antelopeCount = 36;
+const antelopeModels = [];
+const antelopeMixers = [];
+const loader = new GLTFLoader();
 const dummy = new THREE.Object3D();
-const previousPositions = new Float32Array(WIDTH * WIDTH * 3);
+
+for (let i = 0; i < antelopeCount; i++) {
+  loader.load('assets/models/sable_antelope_low_poly_light.glb', (gltf) => {
+    const model = gltf.scene;
+    model.scale.set(10, 10, 10);
+    scene.add(model);
+
+    const mixer = new THREE.AnimationMixer(model);
+    const runClip = gltf.animations.find(c => c.name.toLowerCase().includes('run'));
+    if (runClip) {
+      const action = mixer.clipAction(runClip);
+      action.play();
+      action.startAt(Math.random() * runClip.duration);
+    }
+
+    antelopeModels.push(model);
+    antelopeMixers.push(mixer);
+  });
+}
+
+
+
+
 
 
 
@@ -692,10 +723,30 @@ generateWangTextures((textures) => {
 
 
 
+function animateAntelopes(readPixels) {
+  for (let i = 0; i < antelopeModels.length; i++) {
+    const model = antelopeModels[i];
+    const x = readPixels[i * 4 + 0];
+    const y = readPixels[i * 4 + 1];
+    const z = readPixels[i * 4 + 2];
+
+    const terrainY = getTerrainHeightAt(x, z);
+    model.position.set(x, terrainY + 2, z);
+
+    const vx = x - previousPositions[i * 3 + 0];
+    const vz = z - previousPositions[i * 3 + 2];
+    const angle = Math.atan2(vx, vz);
+    model.rotation.set(0, angle, 0);
+
+    previousPositions[i * 3 + 0] = x;
+    previousPositions[i * 3 + 1] = y;
+    previousPositions[i * 3 + 2] = z;
+  }
+}
 
 
 
-
+const previousPositions = new Float32Array(antelopeCount * 3);
 
 
 
@@ -751,35 +802,39 @@ function animate() {
       0, 0, WIDTH, WIDTH,
       readPixels
     );
+
+    animateAntelopes(readPixels);
+
+    antelopeMixers.forEach(m => m.update(delta));
     
 
-    for (let i = 0; i < WIDTH * WIDTH; i++) {
-      const x = readPixels[i * 4];
-      const y = readPixels[i * 4 + 1];
-      const z = readPixels[i * 4 + 2];
+    // for (let i = 0; i < WIDTH * WIDTH; i++) {
+    //   const x = readPixels[i * 4];
+    //   const y = readPixels[i * 4 + 1];
+    //   const z = readPixels[i * 4 + 2];
 
-      const terrainY = getTerrainHeightAt(x, z); 
-      dummy.position.set(x, terrainY + 2, z);     // Add a little height
+    //   const terrainY = getTerrainHeightAt(x, z); 
+    //   dummy.position.set(x, terrainY + 2, z);     // Add a little height
 
-      // Calculate the direction of velocity (position difference from the previous frame)
-      const vx = x - previousPositions[i * 3 + 0];
-      const vz = z - previousPositions[i * 3 + 2];
-      const angle = Math.atan2(vx, vz); // Steering angle
+    //   // Calculate the direction of velocity (position difference from the previous frame)
+    //   const vx = x - previousPositions[i * 3 + 0];
+    //   const vz = z - previousPositions[i * 3 + 2];
+    //   const angle = Math.atan2(vx, vz); // Steering angle
 
-      dummy.rotation.set(0, angle, 0); // Rotate around y-axis only
+    //   dummy.rotation.set(0, angle, 0); // Rotate around y-axis only
 
 
-      dummy.updateMatrix();
-      antelopeMesh.setMatrixAt(i, dummy.matrix);
+    //   dummy.updateMatrix();
+    //   antelopeMesh.setMatrixAt(i, dummy.matrix);
 
-      // Update the position of the previous frame
-      previousPositions[i * 3 + 0] = x;
-      previousPositions[i * 3 + 1] = y;
-      previousPositions[i * 3 + 2] = z;
+    //   // Update the position of the previous frame
+    //   previousPositions[i * 3 + 0] = x;
+    //   previousPositions[i * 3 + 1] = y;
+    //   previousPositions[i * 3 + 2] = z;
 
       
-    }
-    antelopeMesh.instanceMatrix.needsUpdate = true;
+    // }
+    // antelopeMesh.instanceMatrix.needsUpdate = true;
 
 
 
@@ -791,7 +846,6 @@ function animate() {
   
   animate();
   
-
 
 
 
