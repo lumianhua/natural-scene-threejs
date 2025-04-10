@@ -1,8 +1,8 @@
 import * as THREE from 'https://esm.sh/three@0.154.0';
-import { OrbitControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/OrbitControls.js';
+
 import { RGBELoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/RGBELoader.js';
 import { ImprovedNoise } from 'https://esm.sh/three@0.154.0/examples/jsm/math/ImprovedNoise.js';
-import { PMREMGenerator } from 'https://esm.sh/three@0.154.0';
+
 import { PointerLockControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/PointerLockControls.js';
 import { GPUComputationRenderer } from 'https://esm.sh/three@0.154.0/examples/jsm/misc/GPUComputationRenderer.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/GLTFLoader.js';
@@ -736,42 +736,73 @@ generateWangTextures((textures) => {
 
 
 
-// Adding Grass Model Logic
-const grassCount = 100;
-const grassPositions = [];
 
 
+
+// grass and bush
+
+const grassCount = 400; // Total number of grasses
+const grassFiles = ['grass0.glb', 'grass1.glb']; 
+const allGrassClumps = []; // 存放所有小草簇
+let grassLoaded = 0;
 
 const grassLoader = new GLTFLoader();
-grassLoader.load('assets/models/grass.glb', (gltf) => {
-  const individualClumps = [];
 
-  gltf.scene.children.forEach(child => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      child.material.alphaTest = 0.5;
-      child.material.transparent = true;
-      individualClumps.push(child); // Every tuft of grass is a mesh
+grassFiles.forEach((filename) => {
+  grassLoader.load(`assets/models/${filename}`, (gltf) => {
+    gltf.scene.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (child.material) {
+          child.material.alphaTest = 0.5;
+          child.material.transparent = true;
+        }
+        allGrassClumps.push(child); // Collect tufted grasses from different models
+      }
+    });
+
+    grassLoaded++;
+    if (grassLoaded === grassFiles.length) {
+      scatterAllGrass(); 
     }
   });
+});
 
+function mulberry32(seed) {
+  return function() {
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+}
+
+const grassRand = mulberry32(2025);// Random seeds
+
+function scatterAllGrass() {
+  
   for (let i = 0; i < grassCount; i++) {
-    const base = individualClumps[Math.floor(Math.random() * individualClumps.length)];
+    const base = allGrassClumps[Math.floor(grassRand() * allGrassClumps.length)];
     const clone = base.clone();
 
-    const x = Math.random() * 300 - 150;
-    const z = Math.random() * 100 - 400;
+    
+
+    const x = grassRand() * 300 - 150; // Width range
+    const z = grassRand() * 100 - 400; // Depth range
     const y = getTerrainHeightAt(x, z);
 
     clone.position.set(x, y, z);
-    clone.rotation.y = Math.random() * Math.PI * 2;
-    const scale = 6 + Math.random() * 2;
+    clone.rotation.y = grassRand() * Math.PI * 2;
+    const scale = 6 + grassRand() * 2;
     clone.scale.set(scale, scale, scale);
 
     scene.add(clone);
   }
-});
+}
+
+
+
 
 
 
