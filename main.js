@@ -301,7 +301,7 @@ function initComputeRenderer(renderer) {
 // const previousPositions = new Float32Array(WIDTH * WIDTH * 3);
 
 
-//加载羚羊
+// Loading Antelope
 const antelopeCount = 36;
 const antelopeModels = [];
 const antelopeMixers = [];
@@ -312,6 +312,14 @@ for (let i = 0; i < antelopeCount; i++) {
   loader.load('assets/models/sable_antelope_low_poly_light.glb', (gltf) => {
     const model = gltf.scene;
     model.scale.set(10, 10, 10);
+
+    model.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true; 
+      }
+    });
+
     scene.add(model);
 
     const mixer = new THREE.AnimationMixer(model);
@@ -344,8 +352,10 @@ const camera = new THREE.PerspectiveCamera(
 camera.position.set(0, 0, 0);
 
 // Create the renderer
-const renderer = new THREE.WebGLRenderer();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Changing the Renderer Output Resolution
+
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soften the shadows
 
@@ -508,8 +518,8 @@ document.addEventListener('keyup', (event) => {
 // terrain
 
 
-
-const worldWidth = 400;
+// Change terrain resolution
+const worldWidth = 400; //400
 const worldDepth = 400;
 
 
@@ -522,6 +532,7 @@ function generateHeight(width, height) {
   const perlin = new ImprovedNoise();
   const z = 67; // Refreshing the terrain
 
+  // Adjusting the position and size of the mountain
   const centers = [
     // Mountains in the distance
     { x: 350, y: 300, radius: 80, strength: 0.5},
@@ -530,6 +541,8 @@ function generateHeight(width, height) {
     { x: 90, y: 300, radius: 80, strength: 0.3},
     { x: 30, y: 300, radius: 70, strength: 0.4},
     { x: 60, y: 220, radius: 50, strength: 0.3},
+
+
 
     // Nearby mountains
     { x: 350, y: 60, radius: 80, strength: 0.2},
@@ -544,7 +557,7 @@ function generateHeight(width, height) {
 
 
   let quality = 1;
-  for (let j = 0; j < 4; j++) {
+  for (let j = 0; j < 4; j++) { //j < 4
     for (let i = 0; i < size; i++) {
       const x = i % width;
       const y = ~~(i / width);
@@ -584,7 +597,7 @@ function generateHeight(width, height) {
 
 
 
-function generateWangTextures(callback, mapWidth = 8, mapHeight = 8, tileSize = 128) {
+function generateWangTextures(callback, mapWidth = 6, mapHeight = 6, tileSize = 128) { // Canvas size change
   const canvasList = {
     map: document.createElement('canvas'),
     aoMap: document.createElement('canvas'),
@@ -653,8 +666,8 @@ function generateWangTextures(callback, mapWidth = 8, mapHeight = 8, tileSize = 
 const terrainSize = 1000;
 
 
-// Height scaling of terrain
-const terrainHeightScale = 2.5;
+// Height scaling of terrain; Overall adjustment of the height of the mountain
+const terrainHeightScale = 2; 
 
 
 const data = generateHeight(worldWidth, worldDepth);
@@ -711,7 +724,7 @@ generateWangTextures((textures) => {
   
 
   geometry.attributes.uv.array.forEach((v, i, arr) => {
-    arr[i] *= 10;
+    arr[i] *= 50; // Change in laying density
   });
   geometry.attributes.uv.needsUpdate = true;
 
@@ -722,6 +735,48 @@ generateWangTextures((textures) => {
 });
 
 
+
+// Adding Grass Model Logic
+const grassCount = 100;
+const grassPositions = [];
+
+
+
+const grassLoader = new GLTFLoader();
+grassLoader.load('assets/models/grass.glb', (gltf) => {
+  const individualClumps = [];
+
+  gltf.scene.children.forEach(child => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      child.material.alphaTest = 0.5;
+      child.material.transparent = true;
+      individualClumps.push(child); // Every tuft of grass is a mesh
+    }
+  });
+
+  for (let i = 0; i < grassCount; i++) {
+    const base = individualClumps[Math.floor(Math.random() * individualClumps.length)];
+    const clone = base.clone();
+
+    const x = Math.random() * 300 - 150;
+    const z = Math.random() * 100 - 400;
+    const y = getTerrainHeightAt(x, z);
+
+    clone.position.set(x, y, z);
+    clone.rotation.y = Math.random() * Math.PI * 2;
+    const scale = 6 + Math.random() * 2;
+    clone.scale.set(scale, scale, scale);
+
+    scene.add(clone);
+  }
+});
+
+
+
+
+//boids animation
 
 function animateAntelopes(readPixels) {
   for (let i = 0; i < antelopeModels.length; i++) {
@@ -764,6 +819,9 @@ function animate() {
     const now = performance.now();
     let delta = (now - (animate.lastTime || now)) / 1000;
     animate.lastTime = now;
+
+
+
 
     positionUniforms.time.value = now;
     positionUniforms.delta.value = delta;
@@ -808,33 +866,6 @@ function animate() {
     antelopeMixers.forEach(m => m.update(delta));
     
 
-    // for (let i = 0; i < WIDTH * WIDTH; i++) {
-    //   const x = readPixels[i * 4];
-    //   const y = readPixels[i * 4 + 1];
-    //   const z = readPixels[i * 4 + 2];
-
-    //   const terrainY = getTerrainHeightAt(x, z); 
-    //   dummy.position.set(x, terrainY + 2, z);     // Add a little height
-
-    //   // Calculate the direction of velocity (position difference from the previous frame)
-    //   const vx = x - previousPositions[i * 3 + 0];
-    //   const vz = z - previousPositions[i * 3 + 2];
-    //   const angle = Math.atan2(vx, vz); // Steering angle
-
-    //   dummy.rotation.set(0, angle, 0); // Rotate around y-axis only
-
-
-    //   dummy.updateMatrix();
-    //   antelopeMesh.setMatrixAt(i, dummy.matrix);
-
-    //   // Update the position of the previous frame
-    //   previousPositions[i * 3 + 0] = x;
-    //   previousPositions[i * 3 + 1] = y;
-    //   previousPositions[i * 3 + 2] = z;
-
-      
-    // }
-    // antelopeMesh.instanceMatrix.needsUpdate = true;
 
 
 
