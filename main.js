@@ -959,7 +959,7 @@ function scatterStones() {
 
     clone.position.set(x, y, z);
     clone.rotation.y = stoneRand() * Math.PI * 2;
-    const scale = 10 + stoneRand() * 2; // 更小巧
+    const scale = 10 + stoneRand() * 2; 
     clone.scale.set(scale, scale, scale);
 
     scene.add(clone);
