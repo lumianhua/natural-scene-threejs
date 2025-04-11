@@ -741,9 +741,24 @@ generateWangTextures((textures) => {
 
 // grass and bush
 
-const grassCount = 400; // Total number of grasses
+
+
+
+// create seed
+function mulberry32(seed) {
+  return function() {
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+}
+
+// grass
+
+const grassCount = 500; // Total number of grasses
 const grassFiles = ['grass0.glb', 'grass1.glb']; 
-const allGrassClumps = []; // 存放所有小草簇
+const allGrassClumps = []; // Store all grass clusters
 let grassLoaded = 0;
 
 const grassLoader = new GLTFLoader();
@@ -769,19 +784,12 @@ grassFiles.forEach((filename) => {
   });
 });
 
-function mulberry32(seed) {
-  return function() {
-    let t = seed += 0x6D2B79F5;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  }
-}
 
-const grassRand = mulberry32(2025);// Random seeds
+
+
 
 function scatterAllGrass() {
-  
+  const grassRand = mulberry32(2025);// Random seeds
   for (let i = 0; i < grassCount; i++) {
     const base = allGrassClumps[Math.floor(grassRand() * allGrassClumps.length)];
     const clone = base.clone();
@@ -794,13 +802,169 @@ function scatterAllGrass() {
 
     clone.position.set(x, y, z);
     clone.rotation.y = grassRand() * Math.PI * 2;
-    const scale = 6 + grassRand() * 2;
+    const scale = 4 + grassRand() * 2;
     clone.scale.set(scale, scale, scale);
 
     scene.add(clone);
   }
 }
 
+
+
+
+
+
+// flower
+const flowerCount = 10;
+const flowerFiles = ['flower0.glb'];
+const allFlowers = [];
+let flowerLoaded = 0;
+
+const flowerLoader = new GLTFLoader();
+
+flowerFiles.forEach((filename) => {
+  flowerLoader.load(`assets/models/${filename}`, (gltf) => {
+    gltf.scene.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (child.material) {
+          child.material.alphaTest = 0.5;
+          child.material.transparent = true;
+        }
+        allFlowers.push(child);
+      }
+    });
+
+    flowerLoaded++;
+    if (flowerLoaded === flowerFiles.length) {
+      scatterFlowers(); // 
+    }
+  });
+});
+
+function scatterFlowers() {
+  const flowerRand = mulberry32(300); // 
+  for (let i = 0; i < flowerCount; i++) {
+    const base = allFlowers[Math.floor(flowerRand() * allFlowers.length)];
+    const clone = base.clone();
+
+    const x = flowerRand() * 300 - 150; // 
+    const z = flowerRand() * 100 - 400;
+    const y = getTerrainHeightAt(x, z);
+
+    clone.position.set(x, y, z);
+    clone.rotation.y = flowerRand() * Math.PI * 2;
+    const scale = 4 + flowerRand() * 2;
+    clone.scale.set(scale, scale, scale);
+
+    scene.add(clone);
+  }
+}
+
+
+
+// rock
+const rockCount = 30;
+const rockFiles = ['rock0.glb', 'rock1.glb']; 
+const allRocks = [];
+let rockLoaded = 0;
+
+const rockLoader = new GLTFLoader();
+
+rockFiles.forEach(filename => {
+  rockLoader.load(`assets/models/${filename}`, (gltf) => {
+    gltf.scene.traverse(child => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        allRocks.push(child);
+      }
+    });
+
+    rockLoaded++;
+    if (rockLoaded === rockFiles.length) {
+      scatterRocks();
+    }
+  });
+});
+
+function scatterRocks() {
+  const rand = mulberry32(303); 
+  for (let i = 0; i < rockCount; i++) {
+    const base = allRocks[Math.floor(rand() * allRocks.length)];
+    const clone = base.clone();
+
+    const x = rand() * 800 - 400;
+    const z = rand() * 200 - 50;
+    const y = getTerrainHeightAt(x, z);
+
+    clone.position.set(x, y, z);
+    clone.rotation.y = rand() * Math.PI * 2;
+    const scale = 4 + rand() * 4;
+    clone.scale.set(scale, scale, scale);
+
+    scene.add(clone);
+  }
+}
+
+
+
+// small stones
+
+
+const stoneCount = 80;
+const stoneFiles = ['stone0.glb']; 
+const allStones = [];
+let stoneLoaded = 0;
+
+const stoneLoader = new GLTFLoader();
+
+stoneFiles.forEach((filename) => {
+  stoneLoader.load(`assets/models/${filename}`, (gltf) => {
+    gltf.scene.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        if (child.material) {
+          child.material.alphaTest = 0.5;
+          child.material.transparent = true;
+          child.material.depthWrite = true;
+          child.material.side = THREE.DoubleSide;
+        }
+
+        allStones.push(child);
+      }
+    });
+
+    stoneLoaded++;
+    if (stoneLoaded === stoneFiles.length) {
+      scatterStones(); 
+    }
+  });
+});
+
+
+function scatterStones() {
+  const stoneRand = mulberry32(2333); 
+  for (let i = 0; i < stoneCount; i++) {
+    const base = allStones[Math.floor(stoneRand() * allStones.length)];
+    const clone = base.clone();
+
+   
+    const x = stoneRand() * 400 - 200;
+    const z = stoneRand() * 100 - 400;
+    const y = getTerrainHeightAt(x, z);
+
+    clone.position.set(x, y, z);
+    clone.rotation.y = stoneRand() * Math.PI * 2;
+    const scale = 10 + stoneRand() * 2; // 更小巧
+    clone.scale.set(scale, scale, scale);
+
+    scene.add(clone);
+  }
+}
 
 
 
