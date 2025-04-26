@@ -359,6 +359,10 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Changing the Re
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soften the shadows
 
+renderer.toneMapping = THREE.ACESFilmicToneMapping; // 柔和电影感色调
+renderer.toneMappingExposure = 1; // 曝光调低，变昏暗
+
+
 initComputeRenderer(renderer);
 
 
@@ -370,7 +374,9 @@ document.body.appendChild(renderer.domElement);
 
 
 let sky;
-
+let sunDirection, light, sunHelper;
+let u, v;
+let params;
 
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
 pmremGenerator.compileEquirectangularShader();
@@ -384,10 +390,20 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
   const skyGeo = new THREE.SphereGeometry(5000, 60, 40);
   const skyMat = new THREE.MeshBasicMaterial({
     map: hdrEquirect,
-    side: THREE.BackSide
+    side: THREE.BackSide,
+    color: new THREE.Color(0xfff0cc)
   });
   sky = new THREE.Mesh(skyGeo, skyMat);
   scene.add(sky);
+
+  const params = {
+    skyRotationY: 0, // 天空左右转
+  };
+  
+  const gui = new dat.GUI();
+  gui.add(params, 'skyRotationY', -Math.PI, Math.PI, 0.01).name('Sky Rotation').onChange(updateSun);
+  
+ 
 
   // Automatic extraction of the sun's direction
   const data = hdrEquirect.image.data;
@@ -422,8 +438,10 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
     Math.sin(theta) * Math.cos(phi)
   ).normalize();
 
+ 
+
   // Create and add direct light (to simulate sunlight)
-  const light = new THREE.DirectionalLight(0xffffff, 1.2);
+  const light = new THREE.DirectionalLight(0xffbb66, 0.8);
   light.position.copy(sunDirection.clone().multiplyScalar(100));
   light.castShadow = true;
   
@@ -455,6 +473,25 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
   scene.add(sunHelper);
 
   hdrEquirect.dispose();
+  
+  function updateSun() {
+    sky.rotation.y = params.skyRotationY;
+  
+    const phi = u * 2 * Math.PI + params.skyRotationY;
+    const theta = v * Math.PI;
+  
+    sunDirection.set(
+      Math.sin(theta) * Math.sin(phi),
+      Math.cos(theta),
+      Math.sin(theta) * Math.cos(phi)
+    ).normalize();
+  
+    light.position.copy(sunDirection.clone().multiplyScalar(100));
+    sunHelper.position.copy(sunDirection.clone().multiplyScalar(5000));
+  }
+  
+
+  
 });
 
 
@@ -588,6 +625,8 @@ function generateHeight(width, height) {
     quality *= 5;
   }
 
+
+
   return data;
 }
 
@@ -716,10 +755,10 @@ generateWangTextures((textures) => {
     displacementMap: textures.displacementMap,
     normalMap: textures.normalMap, 
   
-    roughness: 1,
+    roughness: 2,
     metalness: 0,
-    displacementScale: 2.5,
-    envMapIntensity: 0.3
+    displacementScale: 3,
+    envMapIntensity: 0.4
   });
   
 
@@ -901,7 +940,7 @@ function scatterRocks() {
 
     clone.position.set(x, y, z);
     clone.rotation.y = rand() * Math.PI * 2;
-    const scale = 4 + rand() * 4;
+    const scale = 2 + rand() * 2;
     clone.scale.set(scale, scale, scale);
 
     scene.add(clone);
@@ -913,7 +952,7 @@ function scatterRocks() {
 // small stones
 
 
-const stoneCount = 80;
+const stoneCount = 200;
 const stoneFiles = ['stone0.glb']; 
 const allStones = [];
 let stoneLoaded = 0;
@@ -959,7 +998,7 @@ function scatterStones() {
 
     clone.position.set(x, y, z);
     clone.rotation.y = stoneRand() * Math.PI * 2;
-    const scale = 10 + stoneRand() * 2; 
+    const scale = 7 + stoneRand() * 2; 
     clone.scale.set(scale, scale, scale);
 
     scene.add(clone);
