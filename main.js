@@ -69,6 +69,10 @@ const fragmentShaderPosition = `
 uniform float time;
 uniform float delta;
 
+float rand(vec2 co) {
+  return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
 void main() {
   vec2 uv = gl_FragCoord.xy / resolution.xy;
   vec4 tmpPos = texture2D( texturePosition, uv );
@@ -83,6 +87,20 @@ void main() {
     max( velocity.y, 0.0 ) * delta * 6. , 
     62.83 
   );
+
+  position += velocity * delta * 4.0;
+
+  const float BOUNDS = 500.0;
+  const float SPAWN_Z_MIN = -400.0; 
+  const float SPAWN_Z_MAX =  0.0; 
+
+  if (position.x < -BOUNDS) {
+
+      position.x = BOUNDS;   
+
+      float randomZ = mix(SPAWN_Z_MIN, SPAWN_Z_MAX, rand(uv));
+      position.z = randomZ;
+  }
 
   gl_FragColor = vec4( position + velocity * delta * 5. , phase );
 }
@@ -115,7 +133,7 @@ float alignmentThresh = 0.65;
 const float UPPER_BOUNDS = BOUNDS;
 const float LOWER_BOUNDS = -UPPER_BOUNDS;
 
-const float SPEED_LIMIT = 3.0; 
+const float SPEED_LIMIT = 2.5; 
 
 float rand( vec2 co ) {
   return fract( sin( dot( co.xy, vec2(12.9898,78.233) ) ) * 43758.5453 );
@@ -195,9 +213,19 @@ void main() {
     }
   }
 
+
+
+  float targetZ = -450.0;
+
+  vec3 gatheringForce = vec3(0.0, 0.0, (targetZ - selfPosition.z) * 0.015); // thrust to the right
+  velocity += gatheringForce * delta;
+
+  velocity.x -= delta * 4.0;
+
   if ( length( velocity ) > limit ) {
     velocity = normalize( velocity ) * limit;
   }
+  
 
   gl_FragColor = vec4( velocity, 1.0 );
 }
@@ -212,25 +240,36 @@ const WIDTH = 6; // Antelope population
 const BOUNDS = 500; 
 const BOUNDS_HALF = BOUNDS / 2;
 
+//initial position
 function fillPositionTexture(texture) {
   const data = texture.image.data;
   for (let i = 0; i < data.length; i += 4) {
-    const x = Math.random() * BOUNDS - BOUNDS_HALF;
-    const y = Math.random() * BOUNDS - BOUNDS_HALF;
-    const z = Math.random() * BOUNDS - BOUNDS_HALF;
+   
+    const x = BOUNDS - Math.random() * (BOUNDS * 0.8); 
+    
+    const y = Math.random() * 20; 
+    
+    const z = ((Math.random() - 0.5)* 2 * 0.8-(1-0.8)) * BOUNDS; 
+
     data[i + 0] = x;
     data[i + 1] = y;
     data[i + 2] = z;
-    data[i + 3] = 1;
+    data[i + 3] = 1; // phase
   }
 }
+
+
 
 function fillVelocityTexture(texture) {
   const data = texture.image.data;
   for (let i = 0; i < data.length; i += 4) {
-    data[i + 0] = (Math.random() - 0.5) * 10;
-    data[i + 1] = (Math.random() - 0.5) * 10;
-    data[i + 2] = (Math.random() - 0.5) * 10;
+    
+    const vx = 2.0 + Math.random() * 1.0; 
+    const vy = (Math.random() - 0.5) * 0.5; 
+    const vz = (Math.random() - 0.5) * 1.0; 
+    data[i + 0] = vx;
+    data[i + 1] = vy;
+    data[i + 2] = vz;
     data[i + 3] = 1;
   }
 }
@@ -284,19 +323,21 @@ function initComputeRenderer(renderer) {
   velocityVariable.material.defines.BOUNDS = BOUNDS.toFixed(2);
 
   const error = gpuCompute.init();
+
+  const gui = new dat.GUI();
+  const birdFolder = gui.addFolder('Flocking Settings');
+
+  birdFolder.add(velocityUniforms.separationDistance, 'value', 0.0, 100.0).name('Separation');
+  birdFolder.add(velocityUniforms.alignmentDistance, 'value', 0.0, 100.0).name('Alignment');
+  birdFolder.add(velocityUniforms.cohesionDistance, 'value', 0.0, 100.0).name('Cohesion');
+
+  birdFolder.open();
+
+
+
   if (error) console.error(error);
 }
 
-// const antelopeGeometry = new THREE.BoxGeometry(2, 1, 5); 
-
-
-// const antelopeMaterial = new THREE.MeshStandardMaterial({ color: 0x886633 });
-// const antelopeMesh = new THREE.InstancedMesh(antelopeGeometry, antelopeMaterial, WIDTH * WIDTH); antelopeMesh.castShadow = true;
-// antelopeMesh.receiveShadow = true;
-// scene.add(antelopeMesh);
-
-// const dummy = new THREE.Object3D();
-// const previousPositions = new Float32Array(WIDTH * WIDTH * 3);
 
 
 // Loading Antelope
@@ -305,6 +346,7 @@ const antelopeModels = [];
 const antelopeMixers = [];
 const loader = new GLTFLoader();
 const dummy = new THREE.Object3D();
+const antelopeActions = [];
 
 for (let i = 0; i < antelopeCount; i++) {
   loader.load('assets/models/sable_antelope_low_poly_light.glb', (gltf) => {
@@ -326,6 +368,7 @@ for (let i = 0; i < antelopeCount; i++) {
       const action = mixer.clipAction(runClip);
       action.play();
       action.startAt(Math.random() * runClip.duration);
+      antelopeActions.push(action);
     }
 
     antelopeModels.push(model);
@@ -395,7 +438,7 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
   scene.add(sky);
 
   const params = {
-    skyRotationY: 0, // The sky turns left and right
+    skyRotationY: 0.11, // The sky turns left and right
   };
   
   const gui = new dat.GUI();
@@ -1045,17 +1088,35 @@ function scatterStones() {
 function animateAntelopes(readPixels) {
   for (let i = 0; i < antelopeModels.length; i++) {
     const model = antelopeModels[i];
+
     const x = readPixels[i * 4 + 0];
     const y = readPixels[i * 4 + 1];
     const z = readPixels[i * 4 + 2];
 
     const terrainY = getTerrainHeightAt(x, z);
-    model.position.set(x, terrainY + 2, z);
+    model.position.set(x, terrainY + 0, z);
 
     const vx = x - previousPositions[i * 3 + 0];
+    const vy = y - previousPositions[i * 3 + 1];
     const vz = z - previousPositions[i * 3 + 2];
+    const speed = Math.sqrt(vx * vx + vy * vy + vz * vz); 
+
+    // 计算转向
     const angle = Math.atan2(vx, vz);
     model.rotation.set(0, angle, 0);
+
+    // 更新动画Mixer
+    if (i < antelopeMixers.length) {
+      antelopeMixers[i].update(0.016); // 每一帧推进动画
+    }
+
+    // 根据速度动态调整动画播放速度
+    if (i < antelopeActions.length) {
+      const mappedSpeed = THREE.MathUtils.clamp(speed , 0.9, 1.1); 
+      antelopeActions[i].timeScale = mappedSpeed;
+    }
+
+
 
     previousPositions[i * 3 + 0] = x;
     previousPositions[i * 3 + 1] = y;
