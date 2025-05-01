@@ -6,6 +6,26 @@
   <style>
     body { margin: 0; overflow: hidden; }
     canvas { display: block; }
+
+    .dg.ac {
+      transform: scale(0.5); 
+      transform-origin: top right;
+    }
+
+    .dg .cr.number input[type="text"],
+    .dg .cr.string input[type="text"],
+    .dg .cr.function input[type="button"],
+    .dg .cr.boolean input[type="checkbox"] {
+      height: 20px;
+      font-size: 12px;
+    }
+
+    .dg .title {
+      font-size: 14px;
+      font-weight: normal;
+    }
+
+
   </style>
   <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
 
