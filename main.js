@@ -1,6 +1,8 @@
 import * as THREE from 'https://esm.sh/three@0.154.0';
+
 import { RGBELoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/RGBELoader.js';
 import { ImprovedNoise } from 'https://esm.sh/three@0.154.0/examples/jsm/math/ImprovedNoise.js';
+
 import { PointerLockControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/PointerLockControls.js';
 import { GPUComputationRenderer } from 'https://esm.sh/three@0.154.0/examples/jsm/misc/GPUComputationRenderer.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/GLTFLoader.js';
@@ -69,10 +71,6 @@ const fragmentShaderPosition = `
 uniform float time;
 uniform float delta;
 
-float rand(vec2 co) {
-  return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
-}
-
 void main() {
   vec2 uv = gl_FragCoord.xy / resolution.xy;
   vec4 tmpPos = texture2D( texturePosition, uv );
@@ -87,20 +85,6 @@ void main() {
     max( velocity.y, 0.0 ) * delta * 6. , 
     62.83 
   );
-
-  position += velocity * delta * 4.0;
-
-  const float BOUNDS = 500.0;
-  const float SPAWN_Z_MIN = -400.0; 
-  const float SPAWN_Z_MAX =  0.0; 
-
-  if (position.x < -BOUNDS) {
-
-      position.x = BOUNDS;   
-
-      float randomZ = mix(SPAWN_Z_MIN, SPAWN_Z_MAX, rand(uv));
-      position.z = randomZ;
-  }
 
   gl_FragColor = vec4( position + velocity * delta * 5. , phase );
 }
@@ -133,7 +117,7 @@ float alignmentThresh = 0.65;
 const float UPPER_BOUNDS = BOUNDS;
 const float LOWER_BOUNDS = -UPPER_BOUNDS;
 
-const float SPEED_LIMIT = 2.5; 
+const float SPEED_LIMIT = 3.0; 
 
 float rand( vec2 co ) {
   return fract( sin( dot( co.xy, vec2(12.9898,78.233) ) ) * 43758.5453 );
@@ -213,19 +197,9 @@ void main() {
     }
   }
 
-
-
-  float targetZ = -450.0;
-
-  vec3 gatheringForce = vec3(0.0, 0.0, (targetZ - selfPosition.z) * 0.015); // thrust to the right
-  velocity += gatheringForce * delta;
-
-  velocity.x -= delta * 4.0;
-
   if ( length( velocity ) > limit ) {
     velocity = normalize( velocity ) * limit;
   }
-  
 
   gl_FragColor = vec4( velocity, 1.0 );
 }
@@ -238,36 +212,25 @@ const WIDTH = 6; // Antelope population
 const BOUNDS = 500; 
 const BOUNDS_HALF = BOUNDS / 2;
 
-//initial position
 function fillPositionTexture(texture) {
   const data = texture.image.data;
   for (let i = 0; i < data.length; i += 4) {
-   
-    const x = BOUNDS - Math.random() * (BOUNDS * 0.8); 
-    
-    const y = Math.random() * 20; 
-    
-    const z = ((Math.random() - 0.5)* 2 * 0.8-(1-0.8)) * BOUNDS; 
-
+    const x = Math.random() * BOUNDS - BOUNDS_HALF;
+    const y = Math.random() * BOUNDS - BOUNDS_HALF;
+    const z = Math.random() * BOUNDS - BOUNDS_HALF;
     data[i + 0] = x;
     data[i + 1] = y;
     data[i + 2] = z;
-    data[i + 3] = 1; // phase
+    data[i + 3] = 1;
   }
 }
-
-
 
 function fillVelocityTexture(texture) {
   const data = texture.image.data;
   for (let i = 0; i < data.length; i += 4) {
-    
-    const vx = 2.0 + Math.random() * 1.0; 
-    const vy = (Math.random() - 0.5) * 0.5; 
-    const vz = (Math.random() - 0.5) * 1.0; 
-    data[i + 0] = vx;
-    data[i + 1] = vy;
-    data[i + 2] = vz;
+    data[i + 0] = (Math.random() - 0.5) * 10;
+    data[i + 1] = (Math.random() - 0.5) * 10;
+    data[i + 2] = (Math.random() - 0.5) * 10;
     data[i + 3] = 1;
   }
 }
@@ -317,21 +280,19 @@ function initComputeRenderer(renderer) {
   velocityVariable.material.defines.BOUNDS = BOUNDS.toFixed(2);
 
   const error = gpuCompute.init();
-
-  const gui = new dat.GUI();
-  const birdFolder = gui.addFolder('Flocking Settings');
-
-  birdFolder.add(velocityUniforms.separationDistance, 'value', 0.0, 100.0).name('Separation');
-  birdFolder.add(velocityUniforms.alignmentDistance, 'value', 0.0, 100.0).name('Alignment');
-  birdFolder.add(velocityUniforms.cohesionDistance, 'value', 0.0, 100.0).name('Cohesion');
-
-  birdFolder.open();
-
-
-
   if (error) console.error(error);
 }
 
+// const antelopeGeometry = new THREE.BoxGeometry(2, 1, 5); 
+
+
+// const antelopeMaterial = new THREE.MeshStandardMaterial({ color: 0x886633 });
+// const antelopeMesh = new THREE.InstancedMesh(antelopeGeometry, antelopeMaterial, WIDTH * WIDTH); antelopeMesh.castShadow = true;
+// antelopeMesh.receiveShadow = true;
+// scene.add(antelopeMesh);
+
+// const dummy = new THREE.Object3D();
+// const previousPositions = new Float32Array(WIDTH * WIDTH * 3);
 
 
 // Loading Antelope
@@ -340,7 +301,6 @@ const antelopeModels = [];
 const antelopeMixers = [];
 const loader = new GLTFLoader();
 const dummy = new THREE.Object3D();
-const antelopeActions = [];
 
 for (let i = 0; i < antelopeCount; i++) {
   loader.load('assets/models/sable_antelope_low_poly_light.glb', (gltf) => {
@@ -362,7 +322,6 @@ for (let i = 0; i < antelopeCount; i++) {
       const action = mixer.clipAction(runClip);
       action.play();
       action.startAt(Math.random() * runClip.duration);
-      antelopeActions.push(action);
     }
 
     antelopeModels.push(model);
@@ -394,8 +353,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Changing the Re
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soften the shadows
 
-renderer.toneMapping = THREE.ACESFilmicToneMapping; // Soft cinematic tones
-renderer.toneMappingExposure = 0.8; // Exposure is turned down and dimmed.
+renderer.toneMapping = THREE.ACESFilmicToneMapping; // 柔和电影感色调
+renderer.toneMappingExposure = 1; // 曝光调低，变昏暗
 
 
 initComputeRenderer(renderer);
@@ -437,13 +396,13 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
   const skyMat = new THREE.MeshBasicMaterial({
     map: hdrEquirect,
     side: THREE.BackSide,
-    color: new THREE.Color(0xd8c58a)
+    color: new THREE.Color(0xfff0cc)
   });
   sky = new THREE.Mesh(skyGeo, skyMat);
   scene.add(sky);
 
   const params = {
-    skyRotationY: 0.11, // The sky turns left and right
+    skyRotationY: 0, // 天空左右转
   };
   
   const gui = new dat.GUI();
@@ -550,7 +509,7 @@ let previousRotation = new THREE.Euler();
 
 const controls = new PointerLockControls(camera, document.body);
 scene.add(controls.getObject());
-controls.getObject().position.set(0, 32, -350); //Initial camera position
+controls.getObject().position.set(0, 25, -350);
 camera.lookAt(new THREE.Vector3(0, 0, 0));
 
 const raycaster = new THREE.Raycaster();
@@ -584,12 +543,10 @@ const direction = new THREE.Vector3();
 const move = {
   forward: false,
   backward: false,
-  turnLeft: false,
-  turnRight: false,
-  strafeLeft: false,
-  strafeRight: false,
-  up: false, 
-  down: false 
+  left: false,
+  right: false,
+  up: false,
+  down: false
 };
 
 // Listen for key presses
@@ -597,12 +554,10 @@ document.addEventListener('keydown', (event) => {
   switch (event.code) {
     case 'KeyW': move.forward = true; break;
     case 'KeyS': move.backward = true; break;
-    case 'KeyA': move.turnLeft = true; break;
-    case 'KeyD': move.turnRight = true; break;
-    case 'KeyQ': move.strafeLeft = true; break;
-    case 'KeyE': move.strafeRight = true; break;
-    case 'KeyR': move.up = true; break; 
-    case 'KeyF': move.down = true; break;   
+    case 'KeyA': move.left = true; break;
+    case 'KeyD': move.right = true; break;
+    case 'KeyQ': move.up = true; break;
+    case 'KeyE': move.down = true; break;
     case 'KeyT': {
       isTopDownView = !isTopDownView;
 
@@ -631,17 +586,12 @@ document.addEventListener('keyup', (event) => {
   switch (event.code) {
     case 'KeyW': move.forward = false; break;
     case 'KeyS': move.backward = false; break;
-    case 'KeyA': move.turnLeft = false; break;
-    case 'KeyD': move.turnRight = false; break;
-    case 'KeyQ': move.strafeLeft = false; break;
-    case 'KeyE': move.strafeRight = false; break;
-    case 'KeyR': move.up = false; break; 
-    case 'KeyF': move.down = false; break;
-      
+    case 'KeyA': move.left = false; break;
+    case 'KeyD': move.right = false; break;
+    case 'KeyQ': move.up = false; break;
+    case 'KeyE': move.down = false; break;
   }
 });
-
-
 
 
 
@@ -651,107 +601,79 @@ document.addEventListener('keyup', (event) => {
 
 
 // Change terrain resolution
-const worldWidth = 800; 
-const worldDepth = 800;
+const worldWidth = 400;
+const worldDepth = 400;
 
 
 
-
-
+// mountain
 function generateHeight(width, height) {
-
   const size = width * height;
-  const data = new Float32Array(size); 
+  const data = new Uint8Array(size);
   const perlin = new ImprovedNoise();
-  const seed = 57;
-  const z = seed * 0.12345;
+  const z = 67; // Refreshing the terrain
 
-  // Define independent point peaks
-  const mountainCenters = [
-    { x: 0.3, z: 0.4, radius: 0.12, strength: 2 },
-    // { x: 0.8, z: 0.6, radius: 0.12, strength: 0.8 },
+  // Adjusting the position and size of the mountain
+  const centers = [
+    // Mountains in the distance
+    { x: 350, y: 300, radius: 80, strength: 0.5},
+    { x: 290, y: 300, radius: 80, strength: 0.5},
+    { x: 230, y: 260, radius: 80, strength: 0.4},
+    { x: 90, y: 300, radius: 80, strength: 0.3},
+    { x: 30, y: 300, radius: 70, strength: 0.4},
+    { x: 60, y: 220, radius: 50, strength: 0.3},
+
+
+
+    // Nearby mountains
+    { x: 350, y: 60, radius: 80, strength: 0.2},
+    { x: 290, y: 60, radius: 80, strength: 0.2},
+    { x: 230, y: 60, radius: 80, strength: 0.2},
+    { x: 150, y: 60, radius: 80, strength: 0.2},
+    { x: 50, y: 60, radius: 70, strength: 0.2},
+    { x: 100, y: 60, radius: 60, strength: 0.2}
   ];
+  
 
-  // Define rolling ridgelines
-  const mountainLines = [
-    { start: {x: 0.1, z: 0.8}, end: {x: 0.9, z: 0.8}, radius: 0.4, strength: 0.6 },
-    { start: {x: 0.6, z: 0.6}, end: {x: 0.9, z: 0.6}, radius: 0.08, strength: 0.9 },
-    { start: {x: 0.1, z: 0.5}, end: {x: 0.4, z: 0.5}, radius: 0.08, strength: 0.9 },
-    { start: {x: 0.2, z: 0.2}, end: {x: 0.9, z: 0.2}, radius: 0.1, strength: 0.3 },
-  ];
 
-  // 计算(u,v)位置的总权重（点 + 线）
-  function getMountainWeight(u, v) {
-    let weight = 0.0;
-
-    // 点式山峰权重
-    for (const center of mountainCenters) {
-      const dx = u - center.x;
-      const dz = v - center.z;
-      const dist = Math.sqrt(dx * dx + dz * dz) / center.radius;
-      if (dist < 1.0) {
-        const localWeight = Math.pow(1.0 - dist, 2.0); // 平滑衰减
-        weight += localWeight * center.strength;
-      }
-    }
-
-    // 线式山脊权重
-    for (const line of mountainLines) {
-      const dist = distancePointToSegment(u, v, line.start.x, line.start.z, line.end.x, line.end.z) / line.radius;
-      if (dist < 1.0) {
-        const localWeight = Math.pow(1.0 - dist, 2.0); // 平滑衰减
-        weight += localWeight * line.strength;
-      }
-    }
-
-    return Math.min(weight, 1.0); // 最多是1
-  }
-
-  // Auxiliary function: nearest distance from a point to a line segment
-  function distancePointToSegment(px, pz, ax, az, bx, bz) {
-    const abx = bx - ax;
-    const abz = bz - az;
-    const apx = px - ax;
-    const apz = pz - az;
-    const t = Math.max(0, Math.min(1, (apx * abx + apz * abz) / (abx * abx + abz * abz)));
-    const closestX = ax + abx * t;
-    const closestZ = az + abz * t;
-    const dx = px - closestX;
-    const dz = pz - closestZ;
-    return Math.sqrt(dx * dx + dz * dz);
-  }
 
   let quality = 1;
-  for (let j = 0; j < 4; j++) {
-
+  for (let j = 0; j < 4; j++) { //j < 4
     for (let i = 0; i < size; i++) {
-
       const x = i % width;
       const y = ~~(i / width);
 
-      const u = x / (width - 1);
-      const v = y / (height - 1);
+      let totalFalloff = 0;
 
-      
+      for (const center of centers) {
+        const dx = x - center.x;
+        const dy = y - center.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
 
-      const baseNoiseScale = 40; // Noise frequency of small undulations on a flat surface (larger and denser)
-      const baseNoiseStrength = 0.8; // Intensity of undulation on a flat surface
 
-      const noiseScale = 0.5
-      const mainNoise = Math.abs(perlin.noise(x * noiseScale / quality, y * noiseScale / quality, z) * quality * 1.75);
-      const baseNoise = Math.abs(perlin.noise(x * baseNoiseScale / width, y * baseNoiseScale / height, z + 100));
+        let falloff;
+        if (center.radius > 70) {
+          falloff = Math.pow(Math.max(0, 1 - dist / center.radius), 1.2);
+        } else {
+          falloff = Math.pow(Math.max(0, 1 - dist / center.radius), 2.5);
+        }
+        totalFalloff += falloff * center.strength;
 
-      const mountainWeight = getMountainWeight(u, v);
 
-      
-      data[i] += mainNoise * mountainWeight + baseNoise * baseNoiseStrength;
+      }
+
+      const noise = Math.abs(perlin.noise(x / quality, y / quality, z) * quality * 1.75);
+      data[i] += noise * totalFalloff;
     }
 
     quality *= 5;
   }
 
+
+
   return data;
 }
+
 
 
 // texture
@@ -828,7 +750,7 @@ const terrainSize = 1000;
 
 
 // Height scaling of terrain; Overall adjustment of the height of the mountain
-const terrainHeightScale = 1; 
+const terrainHeightScale = 2; 
 
 
 const data = generateHeight(worldWidth, worldDepth);
@@ -1116,7 +1038,7 @@ stoneFiles.forEach((filename) => {
 
 
 function scatterStones() {
-  const stoneRand = mulberry32(5555); 
+  const stoneRand = mulberry32(2333); 
   for (let i = 0; i < stoneCount; i++) {
     const base = allStones[Math.floor(stoneRand() * allStones.length)];
     const clone = base.clone();
@@ -1128,7 +1050,7 @@ function scatterStones() {
 
     clone.position.set(x, y, z);
     clone.rotation.y = stoneRand() * Math.PI * 2;
-    const scale = 2 + stoneRand() * 2; 
+    const scale = 7 + stoneRand() * 2; 
     clone.scale.set(scale, scale, scale);
 
     scene.add(clone);
@@ -1145,35 +1067,17 @@ function scatterStones() {
 function animateAntelopes(readPixels) {
   for (let i = 0; i < antelopeModels.length; i++) {
     const model = antelopeModels[i];
-
     const x = readPixels[i * 4 + 0];
     const y = readPixels[i * 4 + 1];
     const z = readPixels[i * 4 + 2];
 
     const terrainY = getTerrainHeightAt(x, z);
-    model.position.set(x, terrainY + 0, z);
+    model.position.set(x, terrainY + 2, z);
 
     const vx = x - previousPositions[i * 3 + 0];
-    const vy = y - previousPositions[i * 3 + 1];
     const vz = z - previousPositions[i * 3 + 2];
-    const speed = Math.sqrt(vx * vx + vy * vy + vz * vz); 
-
-    // 计算转向
     const angle = Math.atan2(vx, vz);
     model.rotation.set(0, angle, 0);
-
-    // 更新动画Mixer
-    if (i < antelopeMixers.length) {
-      antelopeMixers[i].update(0.016); // 每一帧推进动画
-    }
-
-    // 根据速度动态调整动画播放速度
-    if (i < antelopeActions.length) {
-      const mappedSpeed = THREE.MathUtils.clamp(speed , 0.9, 1.1); 
-      antelopeActions[i].timeScale = mappedSpeed;
-    }
-
-
 
     previousPositions[i * 3 + 0] = x;
     previousPositions[i * 3 + 1] = y;
@@ -1634,41 +1538,6 @@ document.body.appendChild(topDownTextbox);
 
 
 // Animation
-
-const moveSpeed = 100;  // Unit: units/second
-const turnSpeed = 2.0;  // Unit: radians/second
-function updateControls(delta) {
-  const object = controls.getObject();
-
-  // 转身
-  if (move.turnLeft) object.rotation.y -= turnSpeed * delta;
-  if (move.turnRight) object.rotation.y += turnSpeed * delta;
-
-  const direction = new THREE.Vector3();
-
-  // Horizontal movement direction
-  if (move.strafeLeft) direction.x -= 1;
-  if (move.strafeRight) direction.x += 1;
-  if (move.forward) direction.z -= 1;
-  if (move.backward) direction.z += 1;
-  if (move.up) object.position.y += moveSpeed * delta;
-  if (move.down) object.position.y -= moveSpeed * delta;
-
-
-  direction.normalize();
-
-  if (direction.lengthSq() > 0) {
-    const moveVector = new THREE.Vector3(direction.x, 0, direction.z);
-    moveVector.applyQuaternion(object.quaternion);
-    moveVector.y = 0; // Horizontal movement only
-    moveVector.normalize(); 
-
-    object.position.addScaledVector(moveVector, moveSpeed * delta);
-  }
-}
-
-
-
 function animate() {
     requestAnimationFrame(animate);
     const now = performance.now();
@@ -1688,21 +1557,23 @@ function animate() {
     gpuCompute.compute();
 
 
-    updateControls(delta);
-    const speed = 1.5;
 
-    direction.z = Number(move.forward) - Number(move.backward);
-    direction.x = Number(move.right) - Number(move.left);
-    direction.y = Number(move.up) - Number(move.down);
-    direction.normalize();
+    const speed = 1.5;
+    if(!isTopDownView) {
+      direction.z = Number(move.forward) - Number(move.backward);
+      direction.x = Number(move.right) - Number(move.left);
+      direction.y = Number(move.up) - Number(move.down);
+      direction.normalize();
     
-    velocity.x = direction.x * speed;
-    velocity.z = direction.z * speed;
-    velocity.y = direction.y * speed;
+      velocity.x = direction.x * speed;
+      velocity.z = direction.z * speed;
+      velocity.y = direction.y * speed;
     
-    controls.moveRight(velocity.x);
-    controls.moveForward(velocity.z);
-    controls.getObject().position.y += velocity.y;
+      controls.moveRight(velocity.x);
+      controls.moveForward(velocity.z);
+      controls.getObject().position.y += velocity.y;
+    }
+    
     if (sky) sky.position.copy(camera.position);
 
     
