@@ -573,7 +573,6 @@ document.addEventListener('click', (event) => {
     if (intersects.length > 0) {
         const point = intersects[0].point;
         destination = new THREE.Vector3(point.x, point.y, point.z);
-        console.log('Destination set:', destination);
 
         visualizeDestination(destination);
         updatePath();
@@ -1216,8 +1215,8 @@ const particlesMaxLifetimes = [];
 const tornadoCenter = new THREE.Vector3(0, 0, 0);
 let tornadoRadius = 50;
 const tornadoHeight = 90;
-const tornadoUpwardSpeed = 0.2;
-const rotationSpeed = 0.02;
+const tornadoUpwardSpeed = 0.5;
+const rotationSpeed = 0.05;
 
 let tornadoMoveDirection = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
 let tornadoMoveSpeed = 0.3;
@@ -1241,8 +1240,8 @@ for (let i = 0; i < particleCount; i++) {
         Math.cos(angle) * rotationSpeed
     );
 
-    particlesLifetimes.push(Math.random() * 5);
-    particlesMaxLifetimes.push(Math.random() * 8 + 3);
+    particlesLifetimes.push(Math.random() * 3);
+    particlesMaxLifetimes.push(Math.random() * 5 + 2);
 }
 
 particlesGeometry.setAttribute('position', new THREE.Float32BufferAttribute(particlesVertices, 3));
@@ -1424,8 +1423,8 @@ function getNeighbors(node) {
       const neighborZ = node.z + dz;
 
       if (
-        neighborX < -terrainSize / 2 || neighborX > terrainSize / 2 ||
-        neighborZ < -terrainSize / 2 || neighborZ > terrainSize / 2
+        neighborX < -terrainSize || neighborX > terrainSize ||
+        neighborZ < -terrainSize || neighborZ > terrainSize
     ) {
         continue;
     }
@@ -1465,11 +1464,9 @@ function findShortestPath(start, goal) {
       openSet.sort((a, b) => fScore.get(`${a.x},${a.z}`) - fScore.get(`${b.x},${b.z}`));
       const current = openSet.shift();
 
-      console.log('Processing node:', current);
 
       // Check if we've reached the goal
       if (Math.sqrt((current.x - goal.x) ** 2 + (current.z - goal.z) ** 2) < stepSize) {
-          console.log('Goal reached:', current);
           return reconstructPath(cameFrom, current);
       }
 
@@ -1488,7 +1485,6 @@ function findShortestPath(start, goal) {
       }
   }
 
-  console.log('No path found!');
   return null;
 }
 
@@ -1520,7 +1516,6 @@ function reconstructPath(cameFrom, current) {
       path.unshift(current);
   }
 
-  console.log('Reconstructed path:', path);
   return path;
 }
 
@@ -1536,7 +1531,6 @@ function visualizePath(path) {
     previousTube = null;
   }
 
-  console.log('Path to visualize:', path);
   const points = path.map(node => {
       if (!node || typeof node.x === 'undefined' || typeof node.z === 'undefined') {
           console.error('Invalid node in path:', node);
@@ -1646,6 +1640,7 @@ document.body.appendChild(topDownTextbox);
 const moveSpeed = 100;  // Unit: units/second
 const turnSpeed = 2.0;  // Unit: radians/second
 function updateControls(delta) {
+  if (isTopDownView) return;
   const object = controls.getObject();
 
   // Turn around
