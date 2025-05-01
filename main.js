@@ -208,8 +208,6 @@ void main() {
 
 
 
-
-
 const WIDTH = 6; // Antelope population
 const BOUNDS = 500; 
 const BOUNDS_HALF = BOUNDS / 2;
@@ -236,10 +234,6 @@ function fillVelocityTexture(texture) {
     data[i + 3] = 1;
   }
 }
-
-
-
-
 
 
 
@@ -368,11 +362,22 @@ initComputeRenderer(renderer);
 
 document.body.appendChild(renderer.domElement);
 
+//Create top-down camera
+let isTopDownView = false;
+const topDownCamera = new THREE.PerspectiveCamera(
+    75, 
+    window.innerWidth / window.innerHeight, 
+    0.1, 
+    10000
+);
+topDownCamera.position.set(0, 700, 0);
+topDownCamera.lookAt(new THREE.Vector3(0, 0, 0));
+
+
+
 
 
 // hdr sky
-
-
 let sky;
 let sunDirection, light, sunHelper;
 let u, v;
@@ -498,6 +503,8 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
 
 
 //Controls
+let previousPosition = new THREE.Vector3();
+let previousRotation = new THREE.Euler();
 
 
 const controls = new PointerLockControls(camera, document.body);
@@ -505,9 +512,30 @@ scene.add(controls.getObject());
 controls.getObject().position.set(0, 25, -350);
 camera.lookAt(new THREE.Vector3(0, 0, 0));
 
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let destination = null;
 
-document.addEventListener('click', () => {
-  controls.lock(); // Go to first person view
+
+document.addEventListener('click', (event) => {
+  if (isTopDownView) {
+    // Handle clicks in top-down view
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    const intersects = raycaster.intersectObject(terrain);
+    if (intersects.length > 0) {
+        const point = intersects[0].point;
+        destination = new THREE.Vector3(point.x, point.y, point.z);
+
+        visualizeDestination(destination);
+        updatePath();
+    }
+  }
+else {
+  controls.lock(); //Go to first person mode
+  }
 });
 
 const velocity = new THREE.Vector3();
@@ -530,6 +558,26 @@ document.addEventListener('keydown', (event) => {
     case 'KeyD': move.right = true; break;
     case 'KeyQ': move.up = true; break;
     case 'KeyE': move.down = true; break;
+    case 'KeyT': {
+      isTopDownView = !isTopDownView;
+
+        if (isTopDownView) {
+          previousPosition.copy(controls.getObject().position);
+          previousRotation.copy(controls.getObject().rotation);
+          controls.unlock();
+          camera.position.copy(topDownCamera.position);
+          camera.lookAt(topDownCamera.getWorldDirection(new THREE.Vector3()).add(camera.position));
+          document.body.style.cursor = 'default';
+          topDownTextbox.style.display = 'block';
+        } else {
+          controls.getObject().position.copy(previousPosition);
+          controls.getObject().rotation.copy(previousRotation);
+          controls.lock();
+          camera.position.set(controls.getObject().position.x, controls.getObject().position.y, controls.getObject().position.z);
+          document.body.style.cursor = 'none';
+          topDownTextbox.style.display = 'none';
+        }
+    }
   }
 });
 
@@ -549,16 +597,12 @@ document.addEventListener('keyup', (event) => {
 
 
 
-
-
-
 // terrain
 
 
 // Change terrain resolution
-const worldWidth = 400; //400
+const worldWidth = 400;
 const worldDepth = 400;
-
 
 
 
@@ -714,7 +758,12 @@ const data = generateHeight(worldWidth, worldDepth);
 
 
 // Coordinate mapping and sampling
+const terrainHeightCache = new Map();
 function getTerrainHeightAt(x, z) {
+  const key = `${Math.round(x)},${Math.round(z)}`;
+  if (terrainHeightCache.has(key)) {
+    return terrainHeightCache.get(key);
+  }
   
   const gridX = ((x + terrainSize / 2) / terrainSize) * (worldWidth - 1);
   const gridZ = ((z + terrainSize / 2) / terrainSize) * (worldDepth - 1);
@@ -724,7 +773,10 @@ function getTerrainHeightAt(x, z) {
   // Boundary detection
   if (i < 0 || i >= data.length) return 0;
 
-  return data[i] * terrainHeightScale; 
+  const height = data[i] * terrainHeightScale;
+  terrainHeightCache.set(key, height);
+
+  return height;
 }
 
 
@@ -746,7 +798,7 @@ geometry.computeVertexNormals();
 geometry.setAttribute('uv2', new THREE.BufferAttribute(geometry.attributes.uv.array, 2));
 
 
-
+let terrain;
 generateWangTextures((textures) => {
   const material = new THREE.MeshStandardMaterial({
     map: textures.map,
@@ -767,7 +819,7 @@ generateWangTextures((textures) => {
   });
   geometry.attributes.uv.needsUpdate = true;
 
-  const terrain = new THREE.Mesh(geometry, material);
+  terrain = new THREE.Mesh(geometry, material);
   terrain.castShadow = true;
   terrain.receiveShadow = true;
   scene.add(terrain);
@@ -1041,9 +1093,447 @@ const previousPositions = new Float32Array(antelopeCount * 3);
 
 
 
+// Particle System
+
+// Sand tornado particles
+const particleCount = 4000;
+const particlesGeometry = new THREE.BufferGeometry();
+const particlesMaterial = new THREE.PointsMaterial({
+    color: new THREE.Color(0x5c3a04),
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.8,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    map: new THREE.TextureLoader().load('assets/textures/sand_texture.jpg'),
+});
+
+const particlesSizes = [];
+for (let i = 0; i < particleCount; i++) {
+    particlesSizes.push(Math.random() * 2 + 1);
+}
+
+const particlesVertices = [];
+const particlesVelocities = [];
+const particlesLifetimes = [];
+const particlesMaxLifetimes = [];
+const tornadoCenter = new THREE.Vector3(0, 0, 0);
+let tornadoRadius = 50;
+const tornadoHeight = 90;
+const tornadoUpwardSpeed = 0.2;
+const rotationSpeed = 0.02;
+
+let tornadoMoveDirection = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+let tornadoMoveSpeed = 0.3;
+
+for (let i = 0; i < particleCount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const height = Math.random() * tornadoHeight;
+
+    const radiusFactor = Math.sqrt(Math.random());
+    const radius = tornadoRadius * radiusFactor * (1 - height / tornadoHeight); 
+
+    particlesVertices.push(
+        tornadoCenter.x + Math.cos(angle) * radius,
+        height,
+        tornadoCenter.z + Math.sin(angle) * radius
+    );
+
+    particlesVelocities.push(
+        -Math.sin(angle) * rotationSpeed,  
+        tornadoUpwardSpeed,  
+        Math.cos(angle) * rotationSpeed
+    );
+
+    particlesLifetimes.push(Math.random() * 5);
+    particlesMaxLifetimes.push(Math.random() * 8 + 3);
+}
+
+particlesGeometry.setAttribute('position', new THREE.Float32BufferAttribute(particlesVertices, 3));
+particlesGeometry.setAttribute('velocity', new THREE.Float32BufferAttribute(particlesVelocities, 3));
+particlesGeometry.setAttribute('lifetime', new THREE.Float32BufferAttribute(particlesLifetimes, 1));
+particlesGeometry.setAttribute('maxLifetime', new THREE.Float32BufferAttribute(particlesMaxLifetimes, 1));
+
+const sandTornadoParticles = new THREE.Points(particlesGeometry, particlesMaterial);
+scene.add(sandTornadoParticles);
+
+
+// Sand tornado animation
+function updateSandTornado() {
+    const positions = sandTornadoParticles.geometry.attributes.position.array;
+    const velocities = sandTornadoParticles.geometry.attributes.velocity.array;
+    const lifetimes = sandTornadoParticles.geometry.attributes.lifetime.array;
+    const maxLifetimes = sandTornadoParticles.geometry.attributes.maxLifetime.array;
+
+    const boundary = 350;
+    if (tornadoCenter.x > boundary || tornadoCenter.x < -boundary) {
+        tornadoMoveDirection.x *= -1;
+    }
+    if (tornadoCenter.z > boundary || tornadoCenter.z < -boundary) {
+        tornadoMoveDirection.z *= -1;
+    }
+
+    tornadoCenter.add(tornadoMoveDirection.clone().multiplyScalar(tornadoMoveSpeed));
+
+    for (let i = 0; i < positions.length; i += 3) {
+        const x = positions[i];
+        const y = positions[i + 1];
+        const z = positions[i + 2];
+
+        const relativeX = x - tornadoCenter.x;
+        const relativeZ = z - tornadoCenter.z;
+        let angle = Math.atan2(relativeZ, relativeX);
+        let radius = Math.sqrt(relativeX * relativeX + relativeZ * relativeZ);
+        radius += 0.1; 
+
+        angle += rotationSpeed;
+
+        positions[i] = tornadoCenter.x + Math.cos(angle) * radius;
+        positions[i + 2] = tornadoCenter.z + Math.sin(angle) * radius;
+        positions[i + 1] += velocities[i + 1];
+
+        lifetimes[i / 3] += 0.01;
+
+        if (lifetimes[i / 3] > maxLifetimes[i / 3]) {
+            const newAngle = Math.random() * Math.PI * 2;
+            const newRadiusFactor = Math.sqrt(Math.random());
+            const newRadius = tornadoRadius * newRadiusFactor;
+            positions[i] = tornadoCenter.x + Math.cos(newAngle) * newRadius;
+            positions[i + 1] = 0;
+            positions[i + 2] = tornadoCenter.z + Math.sin(newAngle) * newRadius;
+            lifetimes[i / 3] = 0;
+        }
+
+        velocities[i] = -Math.sin(angle) * rotationSpeed;
+        velocities[i + 2] = Math.cos(angle) * rotationSpeed;
+    }
+
+    sandTornadoParticles.geometry.attributes.position.needsUpdate = true;
+    sandTornadoParticles.geometry.attributes.lifetime.needsUpdate = true;
+}
 
 
 
+//Fractals
+
+//Fractal tree
+const barkTexture = new THREE.TextureLoader().load('assets/textures/bark_texture.jpg');
+barkTexture.wrapS = THREE.RepeatWrapping;
+barkTexture.wrapT = THREE.RepeatWrapping;
+barkTexture.encoding = THREE.sRGBEncoding;
+
+//Branch creation
+function createBranch(length, thickness) {
+  const geometry = new THREE.CylinderGeometry(
+    thickness * 0.65,
+    thickness,
+    length,
+    8
+  );
+
+  geometry.translate(0, length / 2, 0);
+
+  const material = new THREE.MeshStandardMaterial({
+    map: barkTexture,
+    roughness: 1,
+    metalness: 0,
+    color: new THREE.Color(0x888888),
+  });
+
+  const branch = new THREE.Mesh(geometry, material);
+  branch.castShadow = true;
+  branch.receiveShadow = true;
+
+  return branch;
+}
+
+//Fractal tree creation
+function createFractalTree(parent, length, thickness, depth, isRoot = false) {
+  if (depth === 0) return;
+
+  const branch = createBranch(length, thickness);
+  parent.add(branch);
+  branch.position.y = 0;
+
+  let angleX, angleZ;
+  if (isRoot) {
+    angleX = (Math.random() - 0.5) * Math.PI / 15;
+    angleZ = (Math.random() - 0.5) * Math.PI / 15;
+  } else {
+    angleX = (Math.random() - 0.5) * Math.PI / 3;
+    angleZ = (Math.random() - 0.5) * Math.PI / 3;
+  }
+  branch.rotation.x = angleX;
+  branch.rotation.z = angleZ;
+
+
+  const newLength = length * (0.8 + Math.random() * 0.2);
+  const newThickness = thickness * (0.6 + Math.random() * 0.2);
+
+
+  const child1 = new THREE.Object3D();
+  child1.position.y = length;
+  branch.add(child1);
+  child1.rotation.y = Math.random() * Math.PI * 2;
+  createFractalTree(child1, newLength, newThickness, depth - 1);
+
+  const child2 = new THREE.Object3D();
+  child2.position.y = length;
+  branch.add(child2);
+  child2.rotation.y = Math.random() * Math.PI * 2;
+  createFractalTree(child2, newLength, newThickness, depth - 1);
+}
+
+// Create 20 trees
+const trees = [];
+for (let i = 0; i < 20; i++) {
+  const tree = new THREE.Object3D();
+  createFractalTree(tree, 10, 2, 8, true);
+  tree.position.x = (Math.random() - 0.5) * worldWidth * 2;
+  tree.position.z = (Math.random() - 0.5) * worldDepth * 2;
+  tree.position.y = getTerrainHeightAt(tree.position.x, tree.position.z);
+  tree.rotation.y = Math.random() * Math.PI * 2;
+
+  scene.add(tree);
+  trees.push(tree);
+}
+
+
+
+//Shortest path algorithm
+const stepSize = 10;
+
+//Make user follow terrain
+function updateUserPosition() {
+  const userPosition = controls.getObject().position;
+  const terrainHeight = getTerrainHeightAt(userPosition.x, userPosition.z);
+  if(!isTopDownView) {
+    userPosition.y = terrainHeight + 15;
+  }
+}
+
+function getNeighbors(node) {
+  const neighbors = [];
+
+  const directions = [
+      { dx: -stepSize, dz: 0 }, // Left
+      { dx: stepSize, dz: 0 },  // Right
+      { dx: 0, dz: -stepSize }, // Down
+      { dx: 0, dz: stepSize },  // Up
+      { dx: -stepSize, dz: -stepSize }, // Top-left
+      { dx: stepSize, dz: -stepSize },  // Top-right
+      { dx: -stepSize, dz: stepSize },  // Bottom-left
+      { dx: stepSize, dz: stepSize },   // Bottom-right
+  ];
+
+  for (const { dx, dz } of directions) {
+      const neighborX = node.x + dx;
+      const neighborZ = node.z + dz;
+
+      if (
+        neighborX < -terrainSize / 2 || neighborX > terrainSize / 2 ||
+        neighborZ < -terrainSize / 2 || neighborZ > terrainSize / 2
+    ) {
+        continue;
+    }
+
+      const neighborHeight = getTerrainHeightAt(neighborX, neighborZ);
+
+      const heightDifference = Math.abs(neighborHeight - node.height);
+      const heightPenalty = neighborHeight * 3;
+
+      const cost = 1 + heightDifference * 3 + heightPenalty; 
+
+      neighbors.push({
+          x: neighborX,
+          z: neighborZ,
+          height: neighborHeight,
+          cost: cost,
+      });
+  }
+
+  return neighbors;
+}
+
+
+//Finding the shortest path using A* algorithm
+function findShortestPath(start, goal) {
+  const openSet = [start];
+  const cameFrom = new Map();
+  cameFrom.set(`${start.x},${start.z}`, null);
+
+  const gScore = new Map();
+  gScore.set(`${start.x},${start.z}`, 0);
+
+  const fScore = new Map();
+  fScore.set(`${start.x},${start.z}`, heuristic(start, goal));
+
+  while (openSet.length > 0) {
+      openSet.sort((a, b) => fScore.get(`${a.x},${a.z}`) - fScore.get(`${b.x},${b.z}`));
+      const current = openSet.shift();
+
+      // Check if we've reached the goal
+      if (Math.sqrt((current.x - goal.x) ** 2 + (current.z - goal.z) ** 2) < stepSize) {
+          return reconstructPath(cameFrom, current);
+      }
+
+      for (const neighbor of getNeighbors(current)) {
+          const tentativeGScore = gScore.get(`${current.x},${current.z}`) + neighbor.cost;
+
+          if (tentativeGScore < (gScore.get(`${neighbor.x},${neighbor.z}`) || Infinity)) {
+              cameFrom.set(`${neighbor.x},${neighbor.z}`, current);
+              gScore.set(`${neighbor.x},${neighbor.z}`, tentativeGScore);
+              fScore.set(`${neighbor.x},${neighbor.z}`, tentativeGScore + heuristic(neighbor, goal));
+
+              if (!openSet.some(n => n.x === neighbor.x && n.z === neighbor.z)) {
+                  openSet.push(neighbor);
+              }
+          }
+      }
+  }
+  return null;
+}
+
+function heuristic(node, goal) {
+  const dx = node.x - goal.x;
+  const dz = node.z - goal.z;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+
+function reconstructPath(cameFrom, current) {
+  const path = [current];
+  const visited = new Set();
+
+  while (true) {
+      const key = `${current.x},${current.z}`;
+      if (visited.has(key)) {
+          break;
+      }
+
+      visited.add(key);
+
+      if (!cameFrom.has(key)) {
+          break;
+      }
+
+      current = cameFrom.get(key);
+      path.unshift(current);
+  }
+
+  return path;
+}
+
+
+//Visualize the path
+let previousTube = null;
+
+function visualizePath(path) {
+  if (previousTube) {
+    scene.remove(previousTube);
+    previousTube.geometry.dispose();
+    previousTube.material.dispose();
+    previousTube = null;
+  }
+
+  const points = path.map(node => {
+      if (!node || typeof node.x === 'undefined' || typeof node.z === 'undefined') {
+          console.error('Invalid node in path:', node);
+      }
+      return new THREE.Vector3(node.x, node.height + 7, node.z);
+  });
+
+  const curve = new THREE.CatmullRomCurve3(points);
+  const tubeGeometry = new THREE.TubeGeometry(curve, 32, 1, 6, false);
+  const tubeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+  const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
+
+  scene.add(tube);
+  previousTube = tube;
+}
+
+
+//Visualize the destination
+const destinationMarker = new THREE.Mesh(
+  new THREE.SphereGeometry(2, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+);
+destinationMarker.visible = false;
+scene.add(destinationMarker);
+
+function visualizeDestination(destination) {
+  destinationMarker.position.copy(destination);
+  destinationMarker.visible = true;
+}
+
+// Update the destination marker position
+function updatePath() {
+  if (!destination) return;
+
+  const userPosition = controls.getObject().position;
+  const snappedDestination = {
+    x: Math.round(destination.x / stepSize) * stepSize,
+    z: Math.round(destination.z / stepSize) * stepSize,
+    height: getTerrainHeightAt(
+      Math.round(destination.x / stepSize) * stepSize,
+      Math.round(destination.z / stepSize) * stepSize
+    ),
+  };
+
+  const start = {
+    x: Math.round(previousPosition.x / stepSize) * stepSize,
+    z: Math.round(previousPosition.z / stepSize) * stepSize,
+    height: getTerrainHeightAt(
+      Math.round(previousPosition.x / stepSize) * stepSize,
+      Math.round(previousPosition.z / stepSize) * stepSize
+    ),
+    cost: 0,
+  };
+
+  const goal = {
+    x: snappedDestination.x,
+    z: snappedDestination.z,
+    height: snappedDestination.height,
+    cost: 0,
+  };
+
+  const path = findShortestPath(start, goal);
+  if (path) {
+      visualizePath(path);
+  } else {
+      console.log('No path found!');
+  }
+}
+
+// Create textbox for map
+const minimapTextbox = document.createElement('div');
+minimapTextbox.textContent = 'Press T to toggle minimap';
+minimapTextbox.style.position = 'absolute';
+minimapTextbox.style.top = '10px';
+minimapTextbox.style.left = '10px';
+minimapTextbox.style.padding = '5px 10px';
+minimapTextbox.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+minimapTextbox.style.color = 'white';
+minimapTextbox.style.fontFamily = 'Arial, sans-serif';
+minimapTextbox.style.fontSize = '14px';
+minimapTextbox.style.borderRadius = '5px';
+minimapTextbox.style.zIndex = '1000';
+document.body.appendChild(minimapTextbox);
+
+// Create textbox for top-down view instructions
+const topDownTextbox = document.createElement('div');
+topDownTextbox.textContent = 'Click to where you want to go';
+topDownTextbox.style.position = 'absolute';
+topDownTextbox.style.top = '40px';
+topDownTextbox.style.left = '10px';
+topDownTextbox.style.padding = '5px 10px';
+topDownTextbox.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+topDownTextbox.style.color = 'white';
+topDownTextbox.style.fontFamily = 'Arial, sans-serif';
+topDownTextbox.style.fontSize = '14px';
+topDownTextbox.style.borderRadius = '5px';
+topDownTextbox.style.zIndex = '1000';
+topDownTextbox.style.display = 'none';
+document.body.appendChild(topDownTextbox);
 
 
 
@@ -1069,19 +1559,21 @@ function animate() {
 
 
     const speed = 1.5;
-
-    direction.z = Number(move.forward) - Number(move.backward);
-    direction.x = Number(move.right) - Number(move.left);
-    direction.y = Number(move.up) - Number(move.down);
-    direction.normalize();
+    if(!isTopDownView) {
+      direction.z = Number(move.forward) - Number(move.backward);
+      direction.x = Number(move.right) - Number(move.left);
+      direction.y = Number(move.up) - Number(move.down);
+      direction.normalize();
     
-    velocity.x = direction.x * speed;
-    velocity.z = direction.z * speed;
-    velocity.y = direction.y * speed;
+      velocity.x = direction.x * speed;
+      velocity.z = direction.z * speed;
+      velocity.y = direction.y * speed;
     
-    controls.moveRight(velocity.x);
-    controls.moveForward(velocity.z);
-    controls.getObject().position.y += velocity.y;
+      controls.moveRight(velocity.x);
+      controls.moveForward(velocity.z);
+      controls.getObject().position.y += velocity.y;
+    }
+    
     if (sky) sky.position.copy(camera.position);
 
     
@@ -1095,16 +1587,32 @@ function animate() {
       readPixels
     );
 
+    updateUserPosition();
+
     animateAntelopes(readPixels);
 
     antelopeMixers.forEach(m => m.update(delta));
+    updateSandTornado();
+
+    if (destination) {
+      const userPosition = controls.getObject().position;
+      const distance = Math.sqrt(
+          (userPosition.x - destination.x) ** 2 +
+          (userPosition.z - destination.z) ** 2
+      );
+
+      if (distance < stepSize) {
+          if (previousTube) {
+              scene.remove(previousTube);
+              previousTube.geometry.dispose();
+              previousTube.material.dispose();
+              previousTube = null;
+          }
+          destinationMarker.visible = false;
+          destination = null;
+      }
+  }
     
-
-
-
-
-
-  
 
     renderer.render(scene, camera);
   }
