@@ -4,8 +4,9 @@ import { ImprovedNoise } from 'https://esm.sh/three@0.154.0/examples/jsm/math/Im
 import { PointerLockControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/PointerLockControls.js';
 import { GPUComputationRenderer } from 'https://esm.sh/three@0.154.0/examples/jsm/misc/GPUComputationRenderer.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/GLTFLoader.js';
-
-
+// import {
+//   MeshStandardNodeMaterial
+// } from 'https://esm.sh/three@0.156.0/examples/jsm/nodes/Nodes.js'; 
 
 
 // preliminary
@@ -94,7 +95,7 @@ void main() {
   const float SPAWN_Z_MIN = -400.0; 
   const float SPAWN_Z_MAX =  0.0; 
 
-  if (position.x < -BOUNDS) {
+  if (position.x < -BOUNDS || position.x > BOUNDS) {
 
       position.x = BOUNDS;   
 
@@ -417,7 +418,9 @@ document.body.appendChild(renderer.domElement);
 let sky;
 let sunDirection, light, sunHelper;
 let u, v;
-let params;
+let params = {
+  skyRotationY: 0.5
+};
 
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
 pmremGenerator.compileEquirectangularShader();
@@ -437,13 +440,10 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
   sky = new THREE.Mesh(skyGeo, skyMat);
   scene.add(sky);
 
-  const params = {
-    skyRotationY: 0.11, // The sky turns left and right
-  };
-  
+
   const gui = new dat.GUI();
   gui.add(params, 'skyRotationY', -Math.PI, Math.PI, 0.01).name('Sky Rotation').onChange(updateSun);
-  
+
  
 
   // Automatic extraction of the sun's direction
@@ -514,7 +514,8 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
   scene.add(sunHelper);
 
   hdrEquirect.dispose();
-  
+  updateSun();
+
   function updateSun() {
     sky.rotation.y = params.skyRotationY;
   
@@ -833,6 +834,8 @@ generateWangTextures((textures) => {
     displacementScale: 3,
     envMapIntensity: 0.4
   });
+
+  geometry.computeVertexNormals();
   
 
   geometry.attributes.uv.array.forEach((v, i, arr) => {
@@ -846,8 +849,251 @@ generateWangTextures((textures) => {
   scene.add(terrain);
 });
 
+// generateWangTextures((textures) => {
+
+//   // textures.map 是生成好的 Wang Tile Texture
+
+//   const textureLoader = new THREE.TextureLoader();
+
+//   const sandTexture = textureLoader.load('assets/textures/coast_sand_01_4k/coast_sand_01_diff_4k.jpg');
+//   const splatMap = textureLoader.load('assets/textures/splatmap.png');
+
+//   sandTexture.wrapS = sandTexture.wrapT = THREE.RepeatWrapping;
+//   textures.map.wrapS = textures.map.wrapT = THREE.RepeatWrapping;
+//   splatMap.wrapS = splatMap.wrapT = THREE.RepeatWrapping;
+
+//   const material = new THREE.ShaderMaterial({
+//     uniforms: {
+//       wangTexture: { value: textures.map },
+//       sandTexture: { value: sandTexture },
+//       splatMap: { value: splatMap },
+//       wangScale: { value: 20.0 },
+//       sandScale: { value: 20.0 }
+//     },
+//     vertexShader: `
+//       varying vec2 vUv;
+//       void main() {
+//         vUv = uv;
+//         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+//       }
+//     `,
+//     fragmentShader: `
+//       uniform sampler2D wangTexture;
+//       uniform sampler2D sandTexture;
+//       uniform sampler2D splatMap;
+//       uniform float wangScale;
+//       uniform float sandScale;
+
+//       varying vec2 vUv;
+
+//       void main() {
+//         vec4 splat = texture2D(splatMap, vUv);
+
+//         vec4 wangColor = texture2D(wangTexture, vUv * wangScale);
+//         vec4 sandColor = texture2D(sandTexture, vUv * sandScale);
+
+//         vec4 color = splat.r * wangColor + splat.g * sandColor;
+
+//         // vec4 color = 0.0 * wangColor + 1.0 * sandColor;
+//         gl_FragColor = color;
+//       }
+//     `
+//   });
+
+//   geometry.computeVertexNormals();
+  
+//   geometry.attributes.uv.array.forEach((v, i, arr) => {
+//     arr[i] *= 1.0; // Splat map 用正常 UV，不需要放大
+//   });
+//   geometry.attributes.uv.needsUpdate = true;
+
+//   const terrain = new THREE.Mesh(geometry, material);
+//   terrain.castShadow = true;
+//   terrain.receiveShadow = true;
+//   scene.add(terrain);
+// });
+
+// generateWangTextures((wangTextures) => {
+//   const loader = new THREE.TextureLoader();
+
+//   const uniforms = {
+//     wangMap: { value: wangTextures.map },
+//     wangAOMap: { value: wangTextures.aoMap },
+//     wangRoughnessMap: { value: wangTextures.roughnessMap },
+//     wangDisplacementMap: { value: wangTextures.displacementMap },
+//     wangNormalMap: { value: wangTextures.normalMap },
+
+//     sandMap: { value: loader.load('assets/textures/coast_sand_01_4k/coast_sand_01_diff_4k.jpg') },
+//     sandAOMap: { value: loader.load('assets/textures/coast_sand_01_4k/coast_sand_01_ao_4k.jpg') },
+//     sandRoughnessMap: { value: loader.load('assets/textures/coast_sand_01_4k/coast_sand_01_rough_4k.jpg') },
+//     sandDisplacementMap: { value: loader.load('assets/textures/coast_sand_01_4k/coast_sand_01_disp_4k.jpg') },
+//     sandNormalMap: { value: loader.load('assets/textures/coast_sand_01_4k/coast_sand_01_nor_dx_4k.jpg') },
+
+//     splatMap: { value: loader.load('assets/textures/splatmap.png') },
+
+//     wangScale: { value: 50.0 },
+//     sandScale: { value: 50.0 }
+//   };
+
+//   // 贴图 wrap 设置
+//   for (let key in uniforms) {
+//     const tex = uniforms[key].value;
+//     if (tex instanceof THREE.Texture) {
+//       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+//     }
+//   }
+
+//   const material = new THREE.ShaderMaterial({
+//     uniforms,
+//     vertexShader: `
+//       varying vec2 vUv;
+//       void main() {
+//         vUv = uv;
+//         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+//       }
+//     `,
+//     fragmentShader: `
+//       uniform sampler2D wangMap, sandMap;
+//       uniform sampler2D wangAOMap, sandAOMap;
+//       uniform sampler2D wangRoughnessMap, sandRoughnessMap;
+//       uniform sampler2D wangDisplacementMap, sandDisplacementMap;
+//       uniform sampler2D wangNormalMap, sandNormalMap;
+//       uniform sampler2D splatMap;
+
+//       uniform float wangScale;
+//       uniform float sandScale;
+
+//       varying vec2 vUv;
+
+//       void main() {
+//         vec2 wangUV = vUv * wangScale;
+//         vec2 sandUV = vUv * sandScale;
+
+//         vec4 splat = texture2D(splatMap, vUv);
+//         float w = splat.r;
+//         float s = splat.g;
+//         float total = w + s;
+//         w = w / total;
+//         s = s / total;
+
+//         // 主颜色混合
+//         vec4 colorWang = texture2D(wangMap, wangUV);
+//         vec4 colorSand = texture2D(sandMap, sandUV);
+//         vec4 finalColor = w * colorWang + s * colorSand;
+
+//         // AO 混合（可以乘 finalColor）
+//         float aoW = texture2D(wangAOMap, wangUV).r;
+//         float aoS = texture2D(sandAOMap, sandUV).r;
+//         float ao = w * aoW + s * aoS;
+
+//         // Roughness 混合
+//         float roughW = texture2D(wangRoughnessMap, wangUV).r;
+//         float roughS = texture2D(sandRoughnessMap, sandUV).r;
+//         float roughness = w * roughW + s * roughS;
+
+//         // Normal 混合（这里只做简单混合，后面可用更复杂方法）
+//         vec3 normalW = texture2D(wangNormalMap, wangUV).xyz * 2.0 - 1.0;
+//         vec3 normalS = texture2D(sandNormalMap, sandUV).xyz * 2.0 - 1.0;
+//         vec3 blendedNormal = normalize(w * normalW + s * normalS);
+
+//         // 输出
+//         gl_FragColor = vec4(finalColor.rgb * ao, 1.0);
+//       }
+//     `
+//   });
+
+//   const terrain = new THREE.Mesh(geometry, material);
+//   terrain.castShadow = true;
+//   terrain.receiveShadow = true;
+//   scene.add(terrain);
+// });
 
 
+
+
+// generateWangTextures((wangTextures) => {
+
+//   const loader = new THREE.TextureLoader();
+
+
+//   const sandMap = loader.load('assets/textures/coast_sand_01_4k/coast_sand_01_diff_4k.jpg');
+//   const sandAOMap = loader.load('assets/textures/coast_sand_01_4k/coast_sand_01_ao_4k.jpg');
+//   const sandRoughMap = loader.load('assets/textures/coast_sand_01_4k/coast_sand_01_rough_4k.jpg');
+//   const sandDispMap = loader.load('assets/textures/coast_sand_01_4k/coast_sand_01_disp_4k.jpg');
+//   const sandNormalMap = loader.load('assets/textures/coast_sand_01_4k/coast_sand_01_nor_dx_4k.jpg');
+
+
+//   const splatMap = loader.load('assets/textures/splatmap.png');
+
+//   const scaleWang = 50;
+//   const scaleSand = 50;
+
+//   // === 2. 设置重复模式 ===
+//   const allTextures = [
+//     ...Object.values(wangTextures),
+//     sandMap, sandAOMap, sandRoughMap, sandDispMap, sandNormalMap,
+//     splatMap
+//   ];
+
+//   allTextures.forEach(tex => {
+//     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+//     tex.colorSpace = THREE.SRGBColorSpace;
+//   });
+
+//   // === 3. 创建 UV ===
+//   const uv = varying(vec2()); // vUv 自动传入
+//   const uvWang = mul(uv, float(scaleWang));
+//   const uvSand = mul(uv, float(scaleSand));
+
+//   // === 4. 采样贴图 ===
+//   const wangColor = texture(wangTextures.map, uvWang);
+//   const sandColor = texture(sandMap, uvSand);
+
+//   const splat = texture(splatMap, uv); // 控制混合
+//   const blendWang = splat.r;
+//   const blendSand = splat.g;
+//   const blendTotal = add(blendWang, blendSand);
+
+//   // === 5. Diffuse 混合 ===
+//   const finalColor = mix(wangColor, sandColor, blendSand);
+
+//   // === 6. Normal 混合 ===
+//   const wangNormal = normalMapNode(texture(wangTextures.normalMap, uvWang));
+//   const sandNormal = normalMapNode(texture(sandNormalMap, uvSand));
+//   const finalNormal = mix(wangNormal, sandNormal, blendSand);
+
+//   // === 7. Roughness 混合 ===
+//   const wangRough = texture(wangTextures.roughnessMap, uvWang).g;
+//   const sandRough = texture(sandRoughMap, uvSand).g;
+//   const finalRough = mix(wangRough, sandRough, blendSand);
+
+//   // === 8. AO 混合 ===
+//   const wangAO = texture(wangTextures.aoMap, uvWang).r;
+//   const sandAO = texture(sandAOMap, uvSand).r;
+//   const finalAO = mix(wangAO, sandAO, blendSand);
+
+//   // === 9. 位移贴图（暂不混合，取 Wang 或 Sand 其中之一）===
+//   const displacementMap = texture(sandDispMap, uvSand); // 可换成 wangTextures.displacementMap
+
+//   // === 10. 构建 Node 材质 ===
+//   const material = new MeshStandardNodeMaterial();
+
+//   material.colorNode = finalColor;
+//   material.normalNode = finalNormal;
+//   material.roughnessNode = finalRough;
+//   material.aoNode = finalAO;
+//   material.displacementMap = sandDispMap;
+//   material.displacementScale = 2;
+//   material.envMapIntensity = 1;
+//   material.metalness = 0;
+
+//   // === 11. 地形 Mesh ===
+//   const terrain = new THREE.Mesh(geometry, material);
+//   terrain.castShadow = true;
+//   terrain.receiveShadow = true;
+//   scene.add(terrain);
+
+// });
 
 
 
@@ -1101,16 +1347,16 @@ function animateAntelopes(readPixels) {
     const vz = z - previousPositions[i * 3 + 2];
     const speed = Math.sqrt(vx * vx + vy * vy + vz * vz); 
 
-    // 计算转向
+    // Calculate steering
     const angle = Math.atan2(vx, vz);
     model.rotation.set(0, angle, 0);
 
-    // 更新动画Mixer
+    // Update the animated Mixer
     if (i < antelopeMixers.length) {
-      antelopeMixers[i].update(0.016); // 每一帧推进动画
+      antelopeMixers[i].update(0.016); // Advancing animation every frame
     }
 
-    // 根据速度动态调整动画播放速度
+    // Dynamically adjusts the animation speed according to the speed
     if (i < antelopeActions.length) {
       const mappedSpeed = THREE.MathUtils.clamp(speed , 0.9, 1.1); 
       antelopeActions[i].timeScale = mappedSpeed;
@@ -1226,7 +1472,6 @@ function animate() {
   
   animate();
   
-
 
 
 
