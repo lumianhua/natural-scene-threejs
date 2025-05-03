@@ -4,6 +4,8 @@ import { ImprovedNoise } from 'https://esm.sh/three@0.154.0/examples/jsm/math/Im
 import { PointerLockControls } from 'https://esm.sh/three@0.154.0/examples/jsm/controls/PointerLockControls.js';
 import { GPUComputationRenderer } from 'https://esm.sh/three@0.154.0/examples/jsm/misc/GPUComputationRenderer.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/GLTFLoader.js';
+import { clone } from './utils/SkeletonUtils.js';
+
 
 // preliminary
 
@@ -340,43 +342,81 @@ function initComputeRenderer(renderer) {
 
 
 
-// Loading Antelope
+// // Loading Antelope
+// const antelopeCount = 36;
+// const antelopeModels = [];
+// const antelopeMixers = [];
+// const loader = new GLTFLoader();
+// const dummy = new THREE.Object3D();
+// const antelopeActions = [];
+
+// for (let i = 0; i < antelopeCount; i++) {
+//   loader.load('assets/models/sable_antelope_low_poly_light.glb', (gltf) => {
+//     const model = gltf.scene;
+//     model.scale.set(10, 10, 10);
+
+//     model.traverse((child) => {
+//       if (child.isMesh) {
+//         child.castShadow = true;
+//         child.receiveShadow = true; 
+//       }
+//     });
+
+//     scene.add(model);
+
+//     const mixer = new THREE.AnimationMixer(model);
+//     const runClip = gltf.animations.find(c => c.name.toLowerCase().includes('run'));
+//     if (runClip) {
+//       const action = mixer.clipAction(runClip);
+//       action.play();
+//       action.startAt(Math.random() * runClip.duration);
+//       antelopeActions.push(action);
+//     }
+
+//     antelopeModels.push(model);
+//     antelopeMixers.push(mixer);
+//   });
+// }
+
+
+// Loading Antelope (optimized)
 const antelopeCount = 36;
 const antelopeModels = [];
 const antelopeMixers = [];
-const loader = new GLTFLoader();
-const dummy = new THREE.Object3D();
 const antelopeActions = [];
 
-for (let i = 0; i < antelopeCount; i++) {
-  loader.load('assets/models/sable_antelope_low_poly_light.glb', (gltf) => {
-    const model = gltf.scene;
+const loader = new GLTFLoader();
+
+loader.load('assets/models/sable_antelope_low_poly_light.glb', (gltf) => {
+  const baseModel = gltf.scene;
+  const runClip = gltf.animations.find(c => c.name.toLowerCase().includes('run'));
+
+  for (let i = 0; i < antelopeCount; i++) {
+    const model = clone(baseModel); 
     model.scale.set(10, 10, 10);
 
     model.traverse((child) => {
       if (child.isMesh) {
         child.castShadow = true;
-        child.receiveShadow = true; 
+        child.receiveShadow = true;
+        child.frustumCulled = false; 
       }
     });
 
     scene.add(model);
 
     const mixer = new THREE.AnimationMixer(model);
-    const runClip = gltf.animations.find(c => c.name.toLowerCase().includes('run'));
     if (runClip) {
       const action = mixer.clipAction(runClip);
       action.play();
-      action.startAt(Math.random() * runClip.duration);
+      action.startAt(Math.random() * runClip.duration); // Different starting points
       antelopeActions.push(action);
     }
 
     antelopeModels.push(model);
     antelopeMixers.push(mixer);
-  });
-}
-
-
+  }
+});
 
 
 
