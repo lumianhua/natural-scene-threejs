@@ -5,6 +5,7 @@ import { PointerLockControls } from 'https://esm.sh/three@0.154.0/examples/jsm/c
 import { GPUComputationRenderer } from 'https://esm.sh/three@0.154.0/examples/jsm/misc/GPUComputationRenderer.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.154.0/examples/jsm/loaders/GLTFLoader.js';
 import { clone } from './utils/SkeletonUtils.js';
+import * as dat from 'https://esm.sh/dat.gui';
 
 
 // preliminary
@@ -342,42 +343,6 @@ function initComputeRenderer(renderer) {
 
 
 
-// // Loading Antelope
-// const antelopeCount = 36;
-// const antelopeModels = [];
-// const antelopeMixers = [];
-// const loader = new GLTFLoader();
-// const dummy = new THREE.Object3D();
-// const antelopeActions = [];
-
-// for (let i = 0; i < antelopeCount; i++) {
-//   loader.load('assets/models/sable_antelope_low_poly_light.glb', (gltf) => {
-//     const model = gltf.scene;
-//     model.scale.set(10, 10, 10);
-
-//     model.traverse((child) => {
-//       if (child.isMesh) {
-//         child.castShadow = true;
-//         child.receiveShadow = true; 
-//       }
-//     });
-
-//     scene.add(model);
-
-//     const mixer = new THREE.AnimationMixer(model);
-//     const runClip = gltf.animations.find(c => c.name.toLowerCase().includes('run'));
-//     if (runClip) {
-//       const action = mixer.clipAction(runClip);
-//       action.play();
-//       action.startAt(Math.random() * runClip.duration);
-//       antelopeActions.push(action);
-//     }
-
-//     antelopeModels.push(model);
-//     antelopeMixers.push(mixer);
-//   });
-// }
-
 
 // Loading Antelope (optimized)
 const antelopeCount = 36;
@@ -465,10 +430,11 @@ topDownCamera.lookAt(new THREE.Vector3(0, 0, 0));
 
 
 let sky;
-let sunDirection, light, sunHelper;
-let u, v;
 let params = {
-  skyRotationY: 0.5
+  skyRotationY: 1.35,
+  sunElevation: -0.31,  
+  sunOffset: -1.54, 
+ 
 };
 
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
@@ -490,10 +456,12 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
   scene.add(sky);
 
 
+
   const gui = new dat.GUI();
   gui.add(params, 'skyRotationY', -Math.PI, Math.PI, 0.01).name('Sky Rotation').onChange(updateSun);
-
- 
+  gui.add(params, 'sunElevation', -0.5, 0.5, 0.01).name('Sun Elevation').onChange(updateSun);
+  gui.add(params, 'sunOffset', -Math.PI, Math.PI, 0.01).name('Sun Offset').onChange(updateSun);
+  
 
   // Automatic extraction of the sun's direction
   const data = hdrEquirect.image.data;
@@ -538,29 +506,32 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
   light.shadow.mapSize.width = 2048;
   light.shadow.mapSize.height = 2048;
 
-  light.shadow.camera.left = -500;
-  light.shadow.camera.right = 500;
-  light.shadow.camera.top = 500;
-  light.shadow.camera.bottom = -500;
-  light.shadow.camera.near = 1;
-  light.shadow.camera.far = 1000;
+  light.shadow.camera.left = -1000;
+  light.shadow.camera.right = 1000;
+  light.shadow.camera.top = 1000;
+  light.shadow.camera.bottom = -1000;
+  light.shadow.camera.near = -400;
+  light.shadow.camera.far = 2000;
+  light.shadow.camera.updateProjectionMatrix();
 
   scene.add(light);
 
   
   // add helper to debug
 
-  // // Debugging light source shadow area
-  // const helper = new THREE.CameraHelper(light.shadow.camera);
+  // Debugging light source shadow area
+  const helper = new THREE.CameraHelper(light.shadow.camera);
   // scene.add(helper);
 
   
   const sunHelper = new THREE.Mesh(
-    new THREE.SphereGeometry(5, 16, 16),
+    new THREE.SphereGeometry(50, 16, 16),
     new THREE.MeshBasicMaterial({ color: 0xffff00 })
   );
   sunHelper.position.copy(sunDirection.clone().multiplyScalar(5000));
-  scene.add(sunHelper);
+  // scene.add(sunHelper);
+
+
 
   hdrEquirect.dispose();
   updateSun();
@@ -568,8 +539,8 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
   function updateSun() {
     sky.rotation.y = params.skyRotationY;
   
-    const phi = u * 2 * Math.PI + params.skyRotationY;
-    const theta = v * Math.PI;
+    const phi = u * 2 * Math.PI + params.skyRotationY + params.sunOffset;
+    const theta = v * Math.PI + params.sunElevation;
   
     sunDirection.set(
       Math.sin(theta) * Math.sin(phi),
@@ -580,6 +551,7 @@ rgbeLoader.load('assets/hdr/industrial_sunset_02_puresky_4k.hdr', (hdrEquirect) 
     light.position.copy(sunDirection.clone().multiplyScalar(100));
     sunHelper.position.copy(sunDirection.clone().multiplyScalar(5000));
   }
+  
   
 
   
