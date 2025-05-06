@@ -604,8 +604,7 @@ const move = {
   turnRight: false,
   strafeLeft: false,
   strafeRight: false,
-  up: false, 
-  down: false 
+
 };
 
 // Listen for key presses
@@ -617,8 +616,7 @@ document.addEventListener('keydown', (event) => {
     case 'KeyD': move.turnRight = true; break;
     case 'KeyQ': move.strafeLeft = true; break;
     case 'KeyE': move.strafeRight = true; break;
-    case 'KeyR': move.up = true; break; 
-    case 'KeyF': move.down = true; break;   
+
     case 'KeyT': {
       isTopDownView = !isTopDownView;
 
@@ -640,6 +638,9 @@ document.addEventListener('keydown', (event) => {
       }
       break;
     }
+
+
+
   }
 });
 
@@ -652,8 +653,7 @@ document.addEventListener('keyup', (event) => {
     case 'KeyD': move.turnRight = false; break;
     case 'KeyQ': move.strafeLeft = false; break;
     case 'KeyE': move.strafeRight = false; break;
-    case 'KeyR': move.up = false; break; 
-    case 'KeyF': move.down = false; break;  
+
   }
 });
 
@@ -774,7 +774,7 @@ function generateHeight(width, height) {
 
 
 
-function generateWangTextures(callback, mapWidth = 6, mapHeight = 6, tileSize = 128) { // Canvas size change
+function generateWangTextures(callback, mapWidth = 6, mapHeight = 6, tileSize = 256) { // Canvas size change
   const canvasList = {
     map: document.createElement('canvas'),
     aoMap: document.createElement('canvas'),
@@ -830,6 +830,9 @@ function generateWangTextures(callback, mapWidth = 6, mapHeight = 6, tileSize = 
       const tex = new THREE.CanvasTexture(canvasList[key]);
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       tex.colorSpace = THREE.SRGBColorSpace;
+      tex.minFilter = THREE.LinearMipMapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      
       textures[key] = tex;
     }
 
@@ -1666,8 +1669,7 @@ function updateControls(delta) {
   if (move.strafeRight) direction.x += 1;
   if (move.forward) direction.z -= 1;
   if (move.backward) direction.z += 1;
-  if (move.up) object.position.y += moveSpeed * delta;
-  if (move.down) object.position.y -= moveSpeed * delta;
+
 
 
   direction.normalize();
@@ -1685,71 +1687,70 @@ function updateControls(delta) {
 
 
 function animate() {
-    requestAnimationFrame(animate);
-    const now = performance.now();
-    let delta = (now - (animate.lastTime || now)) / 1000;
-    animate.lastTime = now;
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  let delta = (now - (animate.lastTime || now)) / 1000;
+  animate.lastTime = now;
 
 
 
 
-    positionUniforms.time.value = now;
-    positionUniforms.delta.value = delta;
-    velocityUniforms.time.value = now;
-    velocityUniforms.delta.value = delta;
+  positionUniforms.time.value = now;
+  positionUniforms.delta.value = delta;
+  velocityUniforms.time.value = now;
+  velocityUniforms.delta.value = delta;
 
-    
-    
-    gpuCompute.compute();
+  
+  
+  gpuCompute.compute();
 
-    updateControls(delta);
-
-
+  updateControls(delta);
 
 
-    if (sky) sky.position.copy(camera.position);
 
-    
-    const target = gpuCompute.getCurrentRenderTarget(positionVariable);
-    const posTexture = target.texture;
-    const readPixels = new Float32Array(WIDTH * WIDTH * 4);
-    
-    renderer.readRenderTargetPixels(
-      target,
-      0, 0, WIDTH, WIDTH,
-      readPixels
+
+  if (sky) sky.position.copy(camera.position);
+
+  
+  const target = gpuCompute.getCurrentRenderTarget(positionVariable);
+  const posTexture = target.texture;
+  const readPixels = new Float32Array(WIDTH * WIDTH * 4);
+  
+  renderer.readRenderTargetPixels(
+    target,
+    0, 0, WIDTH, WIDTH,
+    readPixels
+  );
+
+  updateUserPosition();
+
+  animateAntelopes(readPixels);
+
+  antelopeMixers.forEach(m => m.update(delta));
+  
+  updateSandTornado();
+
+  if (destination) {
+    const userPosition = controls.getObject().position;
+    const distance = Math.sqrt(
+        (userPosition.x - destination.x) ** 2 +
+        (userPosition.z - destination.z) ** 2
     );
 
-    updateUserPosition();
-
-    animateAntelopes(readPixels);
-
-    antelopeMixers.forEach(m => m.update(delta));
-    
-    updateSandTornado();
-
-    if (destination) {
-      const userPosition = controls.getObject().position;
-      const distance = Math.sqrt(
-          (userPosition.x - destination.x) ** 2 +
-          (userPosition.z - destination.z) ** 2
-      );
-
-      if (distance < stepSize) {
-          if (previousTube) {
-              scene.remove(previousTube);
-              previousTube.geometry.dispose();
-              previousTube.material.dispose();
-              previousTube = null;
-          }
-          destinationMarker.visible = false;
-          destination = null;
-      }
-  }
-    
-
-    renderer.render(scene, camera);
-  }
+    if (distance < stepSize) {
+        if (previousTube) {
+            scene.remove(previousTube);
+            previousTube.geometry.dispose();
+            previousTube.material.dispose();
+            previousTube = null;
+        }
+        destinationMarker.visible = false;
+        destination = null;
+    }
+}
   
-  animate();
-  
+
+  renderer.render(scene, camera);
+}
+
+animate();
